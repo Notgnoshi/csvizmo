@@ -1,0 +1,8 @@
+[package]
+name = "csvizmo"
+version = "0.1.0-rc0"
+edition = "2021"
+license = "MIT"
+description = "Gizmos for working with CSVs"
+
+[dependencies]
