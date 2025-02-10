@@ -52,7 +52,6 @@ jobs:
                 tool: cargo-nextest,cargo-llvm-cov
             - name: Test
               run: |
-                  git fetch
                   cargo +nightly llvm-cov --branch nextest --all-targets --all-features
                   cargo +nightly llvm-cov report --cobertura --output-path coverage.xml
                   head coverage.xml
