@@ -13,7 +13,7 @@ pipes. Any ancillary output is emitted on stderr.
 
 # Gizmos
 
-* [ ] `can2csv` - format a `can-utils` candump into a CSV file
+* [x] `can2csv` - format a `can-utils` candump into a CSV file
 * [ ] `csvbits` - parse bitfields out of a CSV column
 * [ ] `csvjitter` - add some random noise to a CSV column
 * [ ] `csvcomm` - find where two CSV files overlap
