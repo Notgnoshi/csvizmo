@@ -2,6 +2,7 @@
 use std::io::{BufRead, Lines};
 
 use eyre::WrapErr;
+use serde::ser::SerializeStruct;
 
 /// File format of the candump
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -31,6 +32,74 @@ impl CanFrame {
     #[must_use]
     pub fn data(&self) -> &[u8] {
         &self.data[..self.dlc]
+    }
+
+    #[must_use]
+    pub fn dst(&self) -> u8 {
+        if self.is_point_to_point() {
+            self.pdu_specific() as u8
+        } else {
+            0xFF // global
+        }
+    }
+
+    #[must_use]
+    pub fn src(&self) -> u8 {
+        (self.canid & 0xFF) as u8
+    }
+
+    #[must_use]
+    pub fn priority(&self) -> u8 {
+        let shifted = self.canid >> 26;
+        let masked = shifted & 0b0111;
+        masked as u8
+    }
+
+    #[must_use]
+    pub fn is_point_to_point(&self) -> bool {
+        // destination-specific range is 00..=EF
+        // broadcast range is F0..=FF
+        self.pdu_format() <= 0xEF
+    }
+
+    #[must_use]
+    pub fn pdu_format(&self) -> u32 {
+        (self.canid & 0xFF0000) >> 16
+    }
+
+    #[must_use]
+    pub fn pdu_specific(&self) -> u32 {
+        (self.canid & 0x00FF00) >> 8
+    }
+
+    #[must_use]
+    pub fn pgn(&self) -> u32 {
+        // Shift off the src address
+        let canid = self.canid >> 8;
+        // Mask off the priority bits, leaving the EDP and DP data page bits
+        let canid = canid & 0x3FFFF;
+
+        if self.is_point_to_point() {
+            canid & 0x3FF00
+        } else {
+            canid
+        }
+    }
+}
+
+impl serde::Serialize for CanFrame {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("CanFrame", 5)?;
+        state.serialize_field("timestamp", &self.timestamp)?;
+        state.serialize_field("interface", &self.interface)?;
+        state.serialize_field("canid", &format!("{:#X}", self.canid))?;
+        state.serialize_field("dlc", &self.dlc)?;
+        state.serialize_field("priority", &self.priority())?;
+        state.serialize_field("src", &format!("{:#X}", self.src()))?;
+        state.serialize_field("dst", &format!("{:#X}", self.dst()))?;
+        state.serialize_field("pgn", &format!("{:#X}", self.pgn()))?;
+        state.serialize_field("data", &hex::encode_upper(self.data()))?;
+        state.end()
     }
 }
 
@@ -217,6 +286,8 @@ fn parse_candump_file_msg(line: &str) -> eyre::Result<CanFrame> {
 
 #[cfg(test)]
 mod tests {
+    use csv::Writer;
+
     use super::*;
 
     fn cli_format_fixture() -> (&'static str, CanFrame) {
@@ -312,9 +383,9 @@ mod tests {
 
     #[test]
     fn test_parser_cli_format() {
-        let lines = b"(01) can0 123 [1] 0A\n
-                      (02) can0 124 [1] 0B\n
-                      (03) can0 125 [1] 0C\n
+        let lines = b"(01) can0 123 [1] 0A\n\
+                      (02) can0 124 [1] 0B\n\
+                      (03) can0 125 [1] 0C\n\
                      ";
         let expected = [
             CanFrame {
@@ -343,5 +414,78 @@ mod tests {
             .filter_map(|m| m.ok())
             .collect();
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_csv_format() {
+        let lines = b"(01) can0 0CAC1C13#0AB0\n\
+                      (02) can0 18EF1CF5#0BC0\n\
+                      (03) can0 09F8051C#0CD0\n\
+                     ";
+        let msgs = CandumpParser::new(&lines[..]);
+
+        let writer = Vec::<u8>::new();
+        let mut writer = Writer::from_writer(writer);
+
+        for msg in msgs {
+            println!("{msg:?}");
+            let msg = msg.unwrap();
+            writer.serialize(msg).unwrap();
+        }
+
+        let bytes = writer.into_inner().unwrap();
+        let csv_str = String::from_utf8(bytes).unwrap();
+        let expected = "timestamp,interface,canid,dlc,priority,src,dst,pgn,data\n\
+                        1.0,can0,0xCAC1C13,2,3,0x13,0x1C,0xAC00,0AB0\n\
+                        2.0,can0,0x18EF1CF5,2,6,0xF5,0x1C,0xEF00,0BC0\n\
+                        3.0,can0,0x9F8051C,2,2,0x1C,0xFF,0x1F805,0CD0\n\
+                       ";
+        assert_eq!(csv_str, expected);
+    }
+
+    #[test]
+    fn test_canid_parsing() {
+        let frame = CanFrame {
+            canid: 0x0CAC1C13,
+            ..Default::default()
+        };
+        assert_eq!(frame.pgn(), 0xAC00);
+        assert_eq!(frame.src(), 0x13);
+        assert_eq!(frame.dst(), 0x1C);
+
+        let frame = CanFrame {
+            canid: 0x18FF3F13,
+            ..Default::default()
+        };
+        assert_eq!(frame.pgn(), 0xFF3F);
+        assert_eq!(frame.src(), 0x13);
+        assert_eq!(frame.dst(), 0xFF);
+
+        let frame = CanFrame {
+            canid: 0x18EF1CF5,
+            ..Default::default()
+        };
+        assert_eq!(frame.priority(), 0x6);
+        assert_eq!(frame.pgn(), 0xEF00);
+        assert_eq!(frame.src(), 0xF5);
+        assert_eq!(frame.dst(), 0x1C);
+
+        let frame = CanFrame {
+            canid: 0x09F8051C,
+            ..Default::default()
+        };
+        assert_eq!(frame.priority(), 0x2);
+        assert_eq!(frame.pgn(), 0x1F805); // has the data page bit set
+        assert_eq!(frame.src(), 0x1C);
+        assert_eq!(frame.dst(), 0xFF);
+
+        let frame = CanFrame {
+            canid: 0x18EEFF1C,
+            ..Default::default()
+        };
+        assert_eq!(frame.priority(), 0x6);
+        assert_eq!(frame.pgn(), 0xEE00);
+        assert_eq!(frame.src(), 0x1C);
+        assert_eq!(frame.dst(), 0xFF);
     }
 }
