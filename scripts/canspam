@@ -1,0 +1,101 @@
+#!/bin/bash
+set -o errexit
+set -o pipefail
+set -o nounset
+set -o noclobber
+
+usage() {
+    cat <<EOF
+Usage: $0 [--help] [--jobs]
+
+A thin wrapper around cangen to spam a CAN bus with fake data.
+
+Optional arguments:
+    --help, -h      Show this help and exit
+    --iface, -i     The CAN interface to use. Defaults to can0
+    --gap, -g       Gap between frames in milliseconds. Defaults to 1 (~70% busload)
+    --burst, -b     Number of messages to send in burst. Defaults to 1
+    --priority, -p  The priority to send the CAN spam at. Only applies if --random is not passed. Defaults to 6
+    --random, -r    Send random data
+EOF
+}
+
+kill_cangen() {
+    # Kill all child processes
+    pkill -P $$
+}
+
+main() {
+    local can_interface="can0"
+    local gap=1
+    local burst=1
+    local priority=6
+    local random="false"
+    local limit="false"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        --help | -h)
+            usage
+            exit
+            ;;
+        --iface | -i)
+            can_interface="$2"
+            shift
+            ;;
+        --gap | -g)
+            gap="$2"
+            shift
+            ;;
+        --burst | -b)
+            burst="$2"
+            shift
+            ;;
+        --priority | -p)
+            priority="$2"
+            shift
+            ;;
+        --random | -r)
+            random="true"
+            ;;
+        --limit | -l | -n)
+            limit="$2"
+            shift
+            ;;
+        *)
+            echo "Unsupported argument: '$1'" >&2
+            exit 1
+            ;;
+        esac
+        shift
+    done
+
+    trap kill_cangen EXIT
+
+    case "$priority" in
+    [1-7]) ;;
+    *)
+        echo "Priority must be 1-7, not '$priority'" >&2
+        exit 1
+        ;;
+    esac
+
+    local -r fixed_data_args=(
+        # Use FE as destination address, so that no one tries to read this silly message
+        -I "$(python -c "print(hex((($priority & 0b111) << 26) | 0xEFFEFF)[2:])")"
+        -D DEADBEEFDEADBEEF
+    )
+    local extra_args=()
+    if [[ "$random" = "false" ]]; then
+        extra_args+=("${fixed_data_args[@]}")
+    fi
+    if [[ "$limit" != "false" ]]; then
+        extra_args+=(-n "$limit")
+    fi
+
+    cangen "$can_interface" -e -L 8 "${extra_args[@]}" -g "$gap" -i -c "$burst" &
+
+    canbusload "$can_interface@250000" -rtbc
+}
+
+main "$@"
