@@ -53,10 +53,10 @@ fn main() -> eyre::Result<()> {
     let msgs = CandumpParser::new(input);
     for msg in msgs {
         match msg {
-            Err(e) => tracing::warn!("Failed to parse msg: {e:?}"),
+            Err(e) => tracing::warn!("Failed to parse msg: {e}"),
             Ok(msg) => {
                 if let Err(e) = writer.serialize(msg) {
-                    tracing::warn!("Failed to serialize msg: {e:?}");
+                    tracing::warn!("Failed to serialize msg: {e}");
                 }
             }
         }

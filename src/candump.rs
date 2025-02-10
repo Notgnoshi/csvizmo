@@ -135,7 +135,7 @@ impl<R: BufRead> Iterator for CandumpParser<R> {
         let line = self.lines.next()?;
         match line {
             Ok(line) => Some(self.format.parse(&line)),
-            Err(e) => Some(Err(eyre::eyre!("Failed to read line: {e:?}"))),
+            Err(e) => Some(Err(eyre::eyre!("Failed to read line: {e}"))),
         }
     }
 }
