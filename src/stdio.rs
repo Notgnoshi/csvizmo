@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use eyre::WrapErr;
@@ -21,16 +21,16 @@ pub fn get_output_writer(output: &Option<PathBuf>) -> eyre::Result<Box<dyn Write
     }
 }
 
-/// Get a [BufReader] for the given path.
+/// Get a reader for the given path.
 ///
 /// If `-` or if `None`, use stdin, otherwise use the given file
-pub fn get_input_reader(input: &Option<PathBuf>) -> eyre::Result<BufReader<Box<dyn Read>>> {
+pub fn get_input_reader(input: &Option<PathBuf>) -> eyre::Result<Box<dyn Read>> {
     match input {
-        None => Ok(BufReader::new(Box::new(std::io::stdin()))),
-        Some(path) if path.as_os_str() == "-" => Ok(BufReader::new(Box::new(std::io::stdin()))),
+        None => Ok(Box::new(std::io::stdin())),
+        Some(path) if path.as_os_str() == "-" => Ok(Box::new(std::io::stdin())),
         Some(path) => {
             let file = File::open(path).wrap_err(format!("Failed to open input file: {path:?}"))?;
-            Ok(BufReader::new(Box::new(file)))
+            Ok(Box::new(file))
         }
     }
 }
