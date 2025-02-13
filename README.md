@@ -20,7 +20,7 @@ pipes. Any ancillary output is emitted on stderr.
 * [ ] `csvbits` - parse bitfields out of a CSV column
 * [ ] `csvjitter` - add some random noise to a CSV column
 * [ ] `csvcomm` - find where two CSV files overlap
-* [ ] `csvdelta` - inter-row deltas
+* [x] `csvdelta` - inter-row deltas and value centering
 * [ ] `csvstats` - calculate 5-number summary statistics
 * [ ] `csvoutlier` - outlier detection and filtering
 * [ ] `csvplot` - line, scatter, and time series plots

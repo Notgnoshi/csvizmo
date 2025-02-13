@@ -1,4 +1,4 @@
-use std::io::{BufRead, IsTerminal, Write};
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -36,13 +36,8 @@ fn main() -> eyre::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    let input = get_input_reader(&args.input)?;
-    let mut output = get_output_writer(&args.output)?;
-
-    for line in input.lines() {
-        let line = line?;
-        writeln!(&mut output, "{line}")?;
-    }
+    let _input = get_input_reader(&args.input)?;
+    let _output = get_output_writer(&args.output)?;
 
     Ok(())
 }

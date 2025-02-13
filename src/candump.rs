@@ -1,5 +1,5 @@
 //! Utilities for parsing candumps
-use std::io::{BufRead, Lines};
+use std::io::{BufRead, BufReader, Lines, Read};
 
 use eyre::WrapErr;
 use serde::ser::SerializeStruct;
@@ -104,14 +104,15 @@ impl serde::Serialize for CanFrame {
 }
 
 /// Parse [CanFrame]s from the given reader
-pub struct CandumpParser<R: BufRead> {
+pub struct CandumpParser<R: Read> {
     format: CandumpFormat,
-    lines: Lines<R>,
+    lines: Lines<BufReader<R>>,
 }
 
-impl<R: BufRead> CandumpParser<R> {
+impl<R: Read> CandumpParser<R> {
     /// Create a new [CandumpParser] using [CandumpFormat::Auto]
     pub fn new(reader: R) -> Self {
+        let reader = BufReader::new(reader);
         Self {
             format: CandumpFormat::Auto,
             lines: reader.lines(),
@@ -120,6 +121,7 @@ impl<R: BufRead> CandumpParser<R> {
 
     /// Create a new [CandumpParser] using the given format
     pub fn with_format(reader: R, format: CandumpFormat) -> Self {
+        let reader = BufReader::new(reader);
         Self {
             format,
             lines: reader.lines(),
@@ -128,14 +130,14 @@ impl<R: BufRead> CandumpParser<R> {
 }
 
 /// There will be one Item for each input line. The iterator runs out when the input lines run out
-impl<R: BufRead> Iterator for CandumpParser<R> {
+impl<R: Read> Iterator for CandumpParser<R> {
     type Item = eyre::Result<CanFrame>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let line = self.lines.next()?;
         match line {
             Ok(line) => Some(self.format.parse(&line)),
-            Err(e) => Some(Err(eyre::eyre!("Failed to read line: {e:?}"))),
+            Err(e) => Some(Err(eyre::eyre!("Failed to read line: {e}"))),
         }
     }
 }
