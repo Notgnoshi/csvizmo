@@ -1,3 +1,5 @@
 mod candump;
+mod frame;
 
-pub use candump::{CanFrame, CandumpFormat, CandumpParser};
+pub use candump::{CandumpFormat, CandumpParser};
+pub use frame::CanFrame;
