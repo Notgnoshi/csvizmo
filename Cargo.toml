@@ -16,3 +16,6 @@ serde = { version = "1.0.217", features = ["derive"] }
 tempfile = "3.16.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+
+[dev-dependencies]
+ctor = "0.3.3"
