@@ -10,6 +10,39 @@ pub struct CanFrame {
     data: [u8; 8],
 }
 
+/// [CanFrame]s are restricted to 8-bytes, [CanMessage]s are arbitrarily sized
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CanMessage {
+    pub timestamp: f64,
+    pub interface: String,
+    pub canid: u32,
+    pub priority: u8,
+    pub pgn: u32,
+    pub src: u8,
+    pub dst: u8,
+    pub dlc: usize,
+    pub data: Vec<u8>,
+}
+
+impl From<CanFrame> for CanMessage {
+    fn from(frame: CanFrame) -> CanMessage {
+        let mut data: Vec<u8> = frame.data.into();
+        data.truncate(frame.dlc);
+
+        CanMessage {
+            priority: frame.priority(),
+            pgn: frame.pgn(),
+            src: frame.src(),
+            dst: frame.dst(),
+            canid: frame.canid,
+            dlc: frame.dlc,
+            timestamp: frame.timestamp,
+            interface: frame.interface,
+            data,
+        }
+    }
+}
+
 impl CanFrame {
     pub fn new(timestamp: f64, interface: String, canid: u32, dlc: usize, data: [u8; 8]) -> Self {
         Self {
@@ -21,11 +54,13 @@ impl CanFrame {
         }
     }
 
+    #[inline]
     #[must_use]
     pub fn data(&self) -> &[u8] {
         &self.data[..self.dlc]
     }
 
+    #[inline]
     #[must_use]
     pub fn dst(&self) -> u8 {
         if self.is_point_to_point() {
@@ -35,11 +70,13 @@ impl CanFrame {
         }
     }
 
+    #[inline]
     #[must_use]
     pub fn src(&self) -> u8 {
         (self.canid & 0xFF) as u8
     }
 
+    #[inline]
     #[must_use]
     pub fn priority(&self) -> u8 {
         let shifted = self.canid >> 26;
@@ -47,6 +84,7 @@ impl CanFrame {
         masked as u8
     }
 
+    #[inline]
     #[must_use]
     pub fn is_point_to_point(&self) -> bool {
         // destination-specific range is 00..=EF
@@ -54,16 +92,19 @@ impl CanFrame {
         self.pdu_format() <= 0xEF
     }
 
+    #[inline]
     #[must_use]
     pub fn pdu_format(&self) -> u32 {
         (self.canid & 0xFF0000) >> 16
     }
 
+    #[inline]
     #[must_use]
     pub fn pdu_specific(&self) -> u32 {
         (self.canid & 0x00FF00) >> 8
     }
 
+    #[inline]
     #[must_use]
     pub fn pgn(&self) -> u32 {
         // Shift off the src address

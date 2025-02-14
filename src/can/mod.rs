@@ -1,5 +1,9 @@
 mod candump;
+mod fastpacket;
 mod frame;
+mod session;
 
 pub use candump::{CandumpFormat, CandumpParser};
-pub use frame::CanFrame;
+pub use fastpacket::FastPacketSession;
+pub use frame::{CanFrame, CanMessage};
+pub use session::Session;
