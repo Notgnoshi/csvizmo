@@ -1,4 +1,5 @@
 mod test_can2csv;
+mod test_csvdelta;
 
 use std::path::PathBuf;
 use std::process::Output;
@@ -9,6 +10,7 @@ use assert_cmd::Command;
 // Do the expensive cargo invocation to find the path to the binary once, and then cache it for
 // future lookups.
 static CAN2CSV: LazyLock<PathBuf> = LazyLock::new(|| assert_cmd::cargo::cargo_bin("can2csv"));
+static CSVDELTA: LazyLock<PathBuf> = LazyLock::new(|| assert_cmd::cargo::cargo_bin("csvdelta"));
 
 pub trait CommandExt {
     /// Same as [Command::output] except with hooks to print stdout/stderr in failed tests
@@ -29,6 +31,12 @@ impl CommandExt for Command {
 
 pub fn can2csv() -> Command {
     let mut cmd = Command::new(&*CAN2CSV);
+    cmd.arg("--log-level=TRACE");
+    cmd
+}
+
+pub fn csvdelta() -> Command {
+    let mut cmd = Command::new(&*CSVDELTA);
     cmd.arg("--log-level=TRACE");
     cmd
 }
