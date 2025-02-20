@@ -33,3 +33,21 @@ fn test_file_candump_format() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, expected);
 }
+
+#[test]
+fn test_fastpacket_reconstruction() {
+    let input = b"\
+        (1739920494.579828) can0 15F805FE#A012010203040506\n\
+        (1739920494.580925) can0 15F805FE#A10708090A0B0C0D\n\
+        (1739920494.582015) can0 15F805FE#A20E0F101112\n\
+    ";
+    let expected = "\
+        timestamp,interface,canid,dlc,priority,src,dst,pgn,data\n\
+        1739920494.579828,can0,0x15F805FE,18,5,0xFE,0xFF,0x1F805,0102030405060708090A0B0C0D0E0F101112\n\
+    ";
+    let mut cmd = can2csv();
+    cmd.arg("--reconstruct");
+    let output = cmd.write_stdin(input).captured_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected);
+}

@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use serde::ser::SerializeStruct;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -40,6 +42,32 @@ impl From<CanFrame> for CanMessage {
             interface: frame.interface,
             data,
         }
+    }
+}
+
+impl CanMessage {
+    pub fn write<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writeln!(
+            writer,
+            "({}) {} {}#{}",
+            self.timestamp,
+            self.interface,
+            hex::encode_upper(self.canid.to_be_bytes()),
+            hex::encode_upper(&self.data)
+        )
+    }
+}
+
+impl CanFrame {
+    pub fn write<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        writeln!(
+            writer,
+            "({}) {} {}#{}",
+            self.timestamp,
+            self.interface,
+            hex::encode_upper(self.canid.to_be_bytes()),
+            hex::encode_upper(self.data())
+        )
     }
 }
 
@@ -117,6 +145,22 @@ impl CanFrame {
         } else {
             canid
         }
+    }
+}
+
+impl serde::Serialize for CanMessage {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("CanMessage", 5)?;
+        state.serialize_field("timestamp", &self.timestamp)?;
+        state.serialize_field("interface", &self.interface)?;
+        state.serialize_field("canid", &format!("{:#X}", self.canid))?;
+        state.serialize_field("dlc", &self.dlc)?;
+        state.serialize_field("priority", &self.priority)?;
+        state.serialize_field("src", &format!("{:#X}", self.src))?;
+        state.serialize_field("dst", &format!("{:#X}", self.dst))?;
+        state.serialize_field("pgn", &format!("{:#X}", self.pgn))?;
+        state.serialize_field("data", &hex::encode_upper(&self.data))?;
+        state.end()
     }
 }
 

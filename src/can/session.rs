@@ -1,4 +1,6 @@
-use crate::can::{CanFrame, CanMessage};
+use std::collections::HashMap;
+
+use crate::can::{CanFrame, CanMessage, FastPacketSession};
 
 /// A transport layer session
 ///
@@ -43,5 +45,64 @@ impl Session for IdentitySession {
 
     fn handle_frame(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>> {
         Ok(Some(frame.into()))
+    }
+}
+
+/// Reconstruct known transport layer protocols into [CanMessage]s
+///
+/// Unknown [CanFrame]s are passed through with the assumption they don't need to be reconstructed.
+pub fn reconstruct_transport_sessions<I: Iterator<Item = CanFrame>>(
+    frames: I,
+) -> SessionManager<I> {
+    SessionManager {
+        frames,
+        identity: IdentitySession,
+        fast_packet: HashMap::new(),
+    }
+}
+
+pub struct SessionManager<I: Iterator<Item = CanFrame>> {
+    frames: I,
+
+    identity: IdentitySession,
+    fast_packet: HashMap<u32, FastPacketSession>,
+}
+
+impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
+    type Item = eyre::Result<CanMessage>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let frame = self.frames.next()?;
+
+        if FastPacketSession::accepts_frame(&frame) {
+            let session_id = FastPacketSession::session_id(&frame);
+            let mut session = self.fast_packet.remove(&session_id).unwrap_or_default();
+
+            match session.handle_frame(frame) {
+                Err(e) => {
+                    return Some(Err(
+                        e.wrap_err("Failed to handle FP message; aborting session")
+                    ))
+                }
+                Ok(Some(msg)) => return Some(Ok(msg)),
+                Ok(None) => {
+                    self.fast_packet.insert(session_id, session);
+                    // Spooky recursion to keep handling the next frame until there's any finished
+                    // session
+                    return self.next();
+                }
+            }
+        } else if IdentitySession::accepts_frame(&frame) {
+            let msg = unsafe {
+                self.identity
+                    .handle_frame(frame)
+                    // Guaranteed to be safe because the IdentitySession is always successful
+                    .unwrap_unchecked()
+                    .unwrap_unchecked()
+            };
+            return Some(Ok(msg));
+        }
+
+        None
     }
 }

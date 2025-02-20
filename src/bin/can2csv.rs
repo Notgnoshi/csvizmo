@@ -1,9 +1,9 @@
-use std::io::IsTerminal;
+use std::io::{BufReader, IsTerminal};
 use std::path::PathBuf;
 
 use clap::Parser;
 use csv::Writer;
-use csvizmo::can::CandumpParser;
+use csvizmo::can::{reconstruct_transport_sessions, CandumpParser};
 use csvizmo::stdio::{get_input_reader, get_output_writer};
 
 /// Convert a can-utils candump to a CSV
@@ -19,6 +19,15 @@ struct Args {
 
     /// Path to the output. stdout if '-' or if not passed
     output: Option<PathBuf>,
+
+    // I don't expect anything parsing FP, TP, or ETP messages to operate on this CSV output. This
+    // is done just for testing, and deeper troubleshooting when sessions aren't quite right.
+    /// Reconstruct transport layer sessions
+    ///
+    /// Intermediate frames for a session will not be produced, only the final product after
+    /// reconstruction.
+    #[clap(short, long)]
+    reconstruct: bool,
 
     /// Disable line-buffering on the CSV output
     ///
@@ -47,21 +56,46 @@ fn main() -> eyre::Result<()> {
         .init();
 
     let input = get_input_reader(&args.input)?;
+    let input = BufReader::new(input);
     let output = get_output_writer(&args.output)?;
     let mut writer = Writer::from_writer(output);
 
     let msgs = CandumpParser::new(input);
-    for msg in msgs {
-        match msg {
-            Err(e) => tracing::warn!("Failed to parse msg: {e}"),
-            Ok(msg) => {
-                if let Err(e) = writer.serialize(msg) {
-                    tracing::warn!("Failed to serialize msg: {e}");
+    if args.reconstruct {
+        let msgs = msgs.filter_map(|f| {
+            f.inspect_err(|e| tracing::warn!("Failed to parse msg: {e}"))
+                .ok()
+        });
+        let msgs = reconstruct_transport_sessions(msgs);
+        // Yeah, there's some copy-pasta, but one of these is an iterator of CanFrames, and the
+        // other an iterator of CanMessages. I could make that work, or I could just copy paste and
+        // move on.
+        for msg in msgs {
+            match msg {
+                Err(e) => tracing::warn!("Failed to parse msg: {e}"),
+                Ok(msg) => {
+                    if let Err(e) = writer.serialize(msg) {
+                        tracing::warn!("Failed to serialize msg: {e}");
+                    }
                 }
             }
+            if should_line_buffer {
+                let _eat_err = writer.flush();
+            }
         }
-        if should_line_buffer {
-            let _eat_err = writer.flush();
+    } else {
+        for msg in msgs {
+            match msg {
+                Err(e) => tracing::warn!("Failed to parse msg: {e}"),
+                Ok(msg) => {
+                    if let Err(e) = writer.serialize(msg) {
+                        tracing::warn!("Failed to serialize msg: {e}");
+                    }
+                }
+            }
+            if should_line_buffer {
+                let _eat_err = writer.flush();
+            }
         }
     }
     let _eat_err = writer.flush();
