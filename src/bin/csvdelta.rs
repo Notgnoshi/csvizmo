@@ -212,7 +212,7 @@ fn parse_field(record: &csv::StringRecord, index: usize) -> eyre::Result<f64> {
         .ok_or(eyre::eyre!("Record {record:?} missing field {index}"))?;
     let value: f64 = field
         .parse()
-        .wrap_err("Failed to parse field {field:?} as f64")?;
+        .wrap_err(format!("Failed to parse field {field:?} as f64"))?;
     Ok(value)
 }
 
