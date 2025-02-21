@@ -23,7 +23,6 @@ pub struct FastPacketSession {
     session_data_length: usize,
     session_group_id: u8,
     current_frame_counter: u8,
-    span: Option<tracing::span::EnteredSpan>,
 }
 
 /// Private impl just for Fast Packet
@@ -73,15 +72,16 @@ impl Session for FastPacketSession {
     }
 
     fn handle_frame(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>> {
-        if self.message.is_none() {
+        if frame.is_first_frame() {
             self.handle_first_frame(frame)?;
         } else {
             self.handle_following_frame(frame)?;
         }
 
         if self.is_session_finished() {
-            let msg = unsafe { self.message.take().unwrap_unchecked() };
-            tracing::debug!(
+            let mut msg = self.message.take().unwrap();
+            msg.data.truncate(msg.dlc);
+            tracing::trace!(
                 "Finished FP session. seq: {:#X} len: {}",
                 self.session_group_id,
                 msg.data.len()
@@ -100,21 +100,18 @@ impl FastPacketSession {
 
     fn is_session_finished(&self) -> bool {
         if let Some(msg) = &self.message {
-            msg.data.len() == self.session_data_length
+            msg.data.len() >= self.session_data_length
         } else {
             false
         }
     }
 
     fn handle_first_frame(&mut self, frame: CanFrame) -> eyre::Result<()> {
-        // TODO: Will spans be useful?
-        let span = tracing::debug_span!("FP", seq_id = frame.group_id()).entered();
-        self.span = Some(span);
         self.session_data_length = frame.session_data_length();
         self.session_group_id = frame.group_id();
         self.current_frame_counter = frame.frame_counter();
         let data: Vec<u8> = frame.session_data().into();
-        tracing::debug!(
+        tracing::trace!(
             "Start FP session.  ctr: {:#X} seq: {:#X} len: {}/{}",
             self.current_frame_counter,
             self.session_group_id,
@@ -134,12 +131,21 @@ impl FastPacketSession {
         let seq = self.session_group_id;
         let exp = self.current_frame_counter + 1;
         if ctr != exp {
-            eyre::bail!(
-                "Received FP frame out of order: ctr {ctr:#X} (expected {exp:#X}) for seq {seq:#X}",
+            tracing::error!(
+                "Received FP frame out of order at {} ctr: {ctr:#X} (expected {exp:#X}) for seq: {seq:#X}",
+                frame.timestamp,
             );
+            eyre::bail!("Received FP frame out of order");
+        }
+        if self.message.is_none() {
+            tracing::error!(
+                "Received FP frame at {} ctr {ctr:#X} for seq {seq:#X} without ctr 0",
+                frame.timestamp
+            );
+            eyre::bail!("Received FP frame without the first frame");
         }
         self.current_frame_counter = exp;
-        let msg = unsafe { self.message.as_mut().unwrap_unchecked() };
+        let msg = self.message.as_mut().unwrap();
         msg.data.extend_from_slice(frame.session_data());
         tracing::trace!(
             "Received FP frame. ctr: {ctr:#X} seq: {seq:#X} len: {}/{}",
@@ -161,7 +167,7 @@ mod tests {
                 "can0".to_string(),
                 0x1F805FE,
                 8,
-                [0xE0, 0x1B, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+                [0xE0, 0x1A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
             ),
             CanFrame::new(
                 0.0,
@@ -182,7 +188,7 @@ mod tests {
                 "can0".to_string(),
                 0x1F805FE,
                 8,
-                [0xE3, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B],
+                [0xE3, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0xFF],
             ),
         ];
         let msg = CanMessage {
@@ -193,10 +199,10 @@ mod tests {
             pgn: 0x1F805,
             src: 0xFE,
             dst: 0xFF,
-            dlc: 0x1B,
+            dlc: 0x1A,
             data: vec![
                 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
-                0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B,
+                0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A,
             ],
         };
         (frames, msg)
