@@ -106,3 +106,14 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
         None
     }
 }
+
+impl<I: Iterator<Item = CanFrame>> Drop for SessionManager<I> {
+    fn drop(&mut self) {
+        if !self.fast_packet.is_empty() {
+            let in_flight_sessions: Vec<_> = self.fast_packet.keys().collect();
+            tracing::warn!(
+                "Reconstruction ended with still-active FP sessions: {in_flight_sessions:X?}"
+            );
+        }
+    }
+}
