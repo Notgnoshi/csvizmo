@@ -309,9 +309,12 @@ impl GpsStreamParser {
                 let absolute = self.position_data.get(&delta.seq_id)?;
                 let age = delta.msg_timestamp - absolute.msg_timestamp;
                 // The parser should still function if a GNSS Position Data message is dropped
-                // (meaning the one matching this delta's seq_id is quite old)
-                let warn_threshold = 1.5;
-                let err_threshold = 3.0;
+                // (meaning the one matching this delta's seq_id is quite old), so we need to
+                // detect it, and continue working.
+                //
+                // This value comes from the NMEA 2000 standard. It's the maximum time delta that
+                // the Position Delta and Altitude Delta can hold.
+                let err_threshold = 1.26;
                 if age > err_threshold {
                     tracing::error!(
                         "Position Delta seq_id: {:#X} at {} refers to (possibly dropped) GNSS Position Data at {} that's {age}s old",
@@ -320,13 +323,6 @@ impl GpsStreamParser {
                         absolute.msg_timestamp,
                     );
                     return None;
-                } else if age > warn_threshold {
-                    tracing::warn!(
-                        "Position Delta seq_id: {:#X} at {} refers to GNSS Position Data at {} that's {age}s old",
-                        delta.seq_id,
-                        delta.msg_timestamp,
-                        absolute.msg_timestamp,
-                    );
                 }
 
                 if delta.seq_id != self.current_data.seq_id {
