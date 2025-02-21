@@ -150,7 +150,7 @@ impl CanFrame {
 
 impl serde::Serialize for CanMessage {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("CanMessage", 5)?;
+        let mut state = serializer.serialize_struct("CanMessage", 9)?;
         state.serialize_field("timestamp", &self.timestamp)?;
         state.serialize_field("interface", &self.interface)?;
         state.serialize_field("canid", &format!("{:#X}", self.canid))?;
@@ -166,7 +166,7 @@ impl serde::Serialize for CanMessage {
 
 impl serde::Serialize for CanFrame {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("CanFrame", 5)?;
+        let mut state = serializer.serialize_struct("CanFrame", 9)?;
         state.serialize_field("timestamp", &self.timestamp)?;
         state.serialize_field("interface", &self.interface)?;
         state.serialize_field("canid", &format!("{:#X}", self.canid))?;
