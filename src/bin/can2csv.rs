@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use csv::Writer;
-use csvizmo::can::{reconstruct_transport_sessions, CandumpParser};
+use csvizmo::can::{CandumpParser, reconstruct_transport_sessions};
 use csvizmo::stdio::{get_input_reader, get_output_writer};
 
 /// Convert a can-utils candump to a CSV

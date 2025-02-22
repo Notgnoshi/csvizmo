@@ -1,6 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use crate::{csvdelta, CommandExt};
+use crate::{CommandExt, csvdelta};
 
 #[test]
 fn test_column_name_or_index() {

@@ -82,7 +82,7 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
                 Err(e) => {
                     return Some(Err(
                         e.wrap_err("Failed to handle FP message; aborting session")
-                    ))
+                    ));
                 }
                 Ok(Some(msg)) => return Some(Ok(msg)),
                 Ok(None) => {

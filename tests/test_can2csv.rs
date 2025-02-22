@@ -1,6 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use crate::{can2csv, CommandExt};
+use crate::{CommandExt, can2csv};
 
 #[test]
 fn test_cli_candump_format() {

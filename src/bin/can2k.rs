@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use csv::Writer;
-use csvizmo::can::{parse_n2k_gps, reconstruct_transport_sessions, CandumpParser};
+use csvizmo::can::{CandumpParser, parse_n2k_gps, reconstruct_transport_sessions};
 use csvizmo::stdio::{get_input_reader, get_output_writer};
 
 /// Parse NMEA 2000 GPS data out of a candump

@@ -2,8 +2,9 @@
 name = "csvizmo"
 version = "0.1.0-rc0"
 autotests = false
-edition = "2021"
+edition = "2024"
 license = "MIT"
+rust-version = "1.85"
 description = "Gizmos for working with CSVs"
 
 [[test]]
