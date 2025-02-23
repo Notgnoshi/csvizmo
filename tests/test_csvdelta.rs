@@ -134,3 +134,31 @@ fn test_center_value() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, expected);
 }
+
+#[test]
+fn test_missing_values() {
+    let input = b"\
+        1,a\n\
+        2,b\n\
+         ,c\n\
+        4,d\n\
+        8,e\n\
+        2,f\n\
+    ";
+
+    // Need to be careful if there's missing data
+    let expected = "\
+        1,a,\n\
+        2,b,1\n\
+         ,c,\n\
+        4,d,\n\
+        8,e,4\n\
+        2,f,-6\n\
+    ";
+
+    let mut cmd = csvdelta();
+    cmd.arg("--column").arg("0").arg("--no-header");
+    let output = cmd.write_stdin(input).captured_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected);
+}

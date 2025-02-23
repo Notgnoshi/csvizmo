@@ -44,6 +44,89 @@ pub fn column_index<S: AsRef<str>, R: Read>(
     Ok(column_index)
 }
 
+pub fn parse_field(record: &csv::StringRecord, index: usize) -> eyre::Result<f64> {
+    let field = record
+        .get(index)
+        .ok_or(eyre::eyre!("Record {record:?} missing field {index}"))?;
+    let value: f64 = field
+        .parse()
+        .wrap_err(format!("Failed to parse field {field:?} as f64"))?;
+    Ok(value)
+}
+
+/// Stop parsing CSV records after the first read failure
+///
+/// Note that this does *not* mean reading will stop after the first *parse* error. Example errors:
+/// * an I/O error
+/// * invalid UTF-8 data
+/// * CSV record has ragged length
+pub fn exit_after_first_failed_read<R, E>(records: R) -> impl Iterator<Item = csv::StringRecord>
+where
+    R: Iterator<Item = Result<csv::StringRecord, E>>,
+    E: std::error::Error,
+{
+    records.map_while(|record| match record {
+        Ok(r) => Some(r),
+        Err(e) => {
+            tracing::error!("Failed to read CSV record: {e}");
+            None
+        }
+    })
+}
+
+/// Parse a single column value, along with the whole record out of the given CSV records
+pub fn parse_column_records<R>(
+    records: R,
+    index: usize,
+) -> impl Iterator<Item = (csv::StringRecord, eyre::Result<f64>)>
+where
+    R: Iterator<Item = csv::StringRecord>,
+{
+    records.map(move |record| {
+        let result = parse_field(&record, index);
+        (record, result)
+    })
+}
+
+/// Apply the given function to the specified field in each record
+///
+/// The transformed field will be appended to the end of the record (it will not modify the input
+/// values).
+pub fn map_column_records<R, F>(records: R, mut func: F) -> impl Iterator<Item = csv::StringRecord>
+where
+    R: Iterator<Item = (csv::StringRecord, eyre::Result<f64>)>,
+    F: FnMut(eyre::Result<f64>) -> Option<f64>,
+{
+    records.map(move |(mut record, maybe_value)| {
+        match func(maybe_value) {
+            Some(value) => record.push_field(&format!("{value}")),
+            None => record.push_field(""),
+        }
+        record
+    })
+}
+
+/// Parse a single column value out of the given CSV records
+pub fn parse_column_values<R>(records: R, index: usize) -> impl Iterator<Item = eyre::Result<f64>>
+where
+    R: Iterator<Item = csv::StringRecord>,
+{
+    records.map(move |record| parse_field(&record, index))
+}
+
+/// Compute the summary statistics of the given values
+pub fn column_stats<'v, V>(values: V) -> rolling_stats::Stats<f64>
+where
+    // TODO: Augment the rolling Stats with missing data counter?
+    V: Iterator<Item = &'v f64>,
+{
+    let mut stats = rolling_stats::Stats::new();
+    for value in values {
+        stats.update(*value);
+    }
+    stats
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,5 +194,39 @@ mod tests {
         expected.push_field("a");
 
         assert_eq!(first_row, expected);
+    }
+
+    #[test]
+    fn test_parse_column() {
+        let content = b"\
+            foo,bar\n\
+            1,a\n\
+            2,b\n\
+            3,c\n\
+        ";
+        let reader = csv::Reader::from_reader(&content[..]);
+        let records = exit_after_first_failed_read(reader.into_records());
+        let values: Vec<_> = parse_column_values(records, 0).flatten().collect();
+        let expected = [1.0, 2.0, 3.0];
+        assert_eq!(values, expected);
+    }
+
+    #[test]
+    fn test_parse_column_missing_data() {
+        let content = b"\
+            foo,bar\n\
+            1,a\n\
+             ,b\n\
+            3,c\n\
+        ";
+        let reader = csv::Reader::from_reader(&content[..]);
+        let records = exit_after_first_failed_read(reader.into_records());
+        let maybe_values: Vec<_> = parse_column_values(records, 0).collect();
+        assert_eq!(maybe_values.len(), 3);
+        assert!(maybe_values[1].is_err());
+
+        let values: Vec<_> = maybe_values.into_iter().filter_map(|r| r.ok()).collect();
+        let expected = [1.0, 3.0];
+        assert_eq!(values, expected);
     }
 }
