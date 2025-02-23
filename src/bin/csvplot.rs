@@ -49,6 +49,11 @@ struct Args {
     #[clap(long)]
     ymax: Option<f64>,
 
+    #[clap(long)]
+    xlabel: Option<String>,
+    #[clap(long)]
+    ylabel: Option<String>,
+
     /// The X column name or index. If not specified, the Y column will be treated as a time series
     #[clap(short, value_name = "X COLUMN")]
     x: Option<String>,
@@ -86,22 +91,22 @@ fn main() -> eyre::Result<()> {
 
     let header = reader.headers()?.clone();
 
-    let mut ynames = Vec::new();
+    let mut ylabels = Vec::new();
     let mut column_indices = Vec::new();
     for y in args.y {
         let idx = column_index(&mut reader, y)?;
         if has_header {
-            ynames.push(header.get(idx).unwrap());
+            ylabels.push(header.get(idx).unwrap());
         }
 
         column_indices.push(idx);
     }
-    let mut xname = "";
+    let mut xlabel = "";
     // Put the X axis at the end, so that it's easier to add/remove if the X axis isn't specified.
     if let Some(x) = &args.x {
         let idx = column_index(&mut reader, x)?;
         if has_header {
-            xname = header.get(idx).unwrap();
+            xlabel = header.get(idx).unwrap();
         }
         column_indices.push(idx);
     }
@@ -114,19 +119,28 @@ fn main() -> eyre::Result<()> {
 
     if args.x.is_none() {
         tracing::info!("No X-axis column given. Proceeding with time series");
-        xname = "index";
+        xlabel = "time";
         let indices: Vec<_> = (0..data[0].len()).map(|i| i as f64).collect();
         data.push(indices);
     }
+    if let Some(name) = &args.xlabel {
+        xlabel = name;
+    }
+
+    let mut ylabel = "";
+    if ylabels.len() == 1 {
+        ylabel = ylabels[0];
+    }
+    if let Some(name) = &args.ylabel {
+        ylabel = name;
+    }
+    // TODO: Disable LaTeX label formatting?
+    axes.set_x_label(xlabel, &[]);
+    axes.set_y_label(ylabel, &[]);
 
     let xs = data.remove(data.len() - 1);
 
-    for (ys, yname) in data.iter().zip(ynames) {
-        // If there's only one Y column, then label the Y axis, otherwise rely on the legend
-        if data.len() == 1 {
-            axes.set_y_label(yname, &[]);
-        }
-
+    for (ys, yname) in data.iter().zip(ylabels) {
         let plotter = if args.scatter {
             gnuplot::Axes2D::points
         } else {
@@ -142,8 +156,6 @@ fn main() -> eyre::Result<()> {
         plotter(axes, xs.iter(), ys, &options);
     }
 
-    // TODO: Disable LaTeX label formatting?
-    axes.set_x_label(xname, &[]);
     axes.set_x_range(
         args.xmin
             .map(gnuplot::AutoOption::Fix)
