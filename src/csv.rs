@@ -127,6 +127,30 @@ where
     stats
 }
 
+/// Parse multiple fields at once from the CSV records
+///
+/// Return value is a vector of columns. Any parse failures are indicated with a `f64::NAN`.
+pub fn parse_multi_columns<R>(records: R, indices: &[usize]) -> Vec<Vec<f64>>
+where
+    R: Iterator<Item = csv::StringRecord>,
+{
+    let mut values = Vec::new();
+    for _ in indices {
+        values.push(Vec::new());
+    }
+
+    for record in records {
+        for (idx, col) in indices.iter().enumerate() {
+            let value = match parse_field(&record, *col) {
+                Ok(v) => v,
+                Err(_) => f64::NAN,
+            };
+            values[idx].push(value);
+        }
+    }
+    values
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
