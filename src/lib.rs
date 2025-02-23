@@ -1,4 +1,5 @@
 pub mod can;
+pub mod csv;
 pub mod stdio;
 
 #[cfg(test)]
