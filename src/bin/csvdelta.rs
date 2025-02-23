@@ -2,6 +2,7 @@ use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
 use clap::Parser;
+use csvizmo::csv::column_index;
 use csvizmo::stdio::{get_input_reader, get_output_writer};
 use eyre::WrapErr;
 
@@ -111,39 +112,10 @@ fn main() -> eyre::Result<()> {
     let output = get_output_writer(&args.output)?;
     let mut output = csv::Writer::from_writer(output);
 
-    let header = if has_header {
-        Some(input.headers()?)
-    } else {
-        None
-    };
+    let header = has_header.then_some(input.headers()?).cloned();
 
     // Find the column index of the input column
-    let column_index: usize = if let Some(header) = header {
-        // First check for a column named by --column, and then fallback to parsing --column as an
-        // index
-        if let Some(index) = header.iter().position(|h| h == args.column) {
-            tracing::debug!("Found column {:?} at index {index}", args.column);
-            index
-        } else {
-            let index: usize = args
-                .column
-                .parse()
-                .wrap_err("Failed to parse --column as an index")
-                .wrap_err("Failed to find --column in CSV header")?;
-            if let Some(name) = header.get(index) {
-                tracing::debug!("Found column {name:?} at index {index}");
-            } else {
-                eyre::bail!(
-                    "Given --column {:?} not found in CSV header: {header:?}",
-                    args.column
-                );
-            }
-            index
-        }
-    } else {
-        // If there's no header, then --column *must* be an index
-        args.column.parse()?
-    };
+    let column_index = column_index(&mut input, args.column)?;
 
     // Write the header, with the new column to the output file
     if let Some(header) = header {
