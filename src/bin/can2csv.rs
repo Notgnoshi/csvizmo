@@ -1,5 +1,6 @@
 use std::io::{BufReader, IsTerminal};
 use std::path::PathBuf;
+use std::time::Instant;
 
 use clap::Parser;
 use csv::Writer;
@@ -60,6 +61,8 @@ fn main() -> eyre::Result<()> {
     let output = get_output_writer(&args.output)?;
     let mut writer = Writer::from_writer(output);
 
+    let start = Instant::now();
+
     let msgs = CandumpParser::new(input);
     if args.reconstruct {
         let msgs = msgs.filter_map(|f| {
@@ -99,6 +102,8 @@ fn main() -> eyre::Result<()> {
         }
     }
     let _eat_err = writer.flush();
+
+    tracing::info!("Finished after {:?}", start.elapsed());
 
     Ok(())
 }

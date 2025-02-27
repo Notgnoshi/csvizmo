@@ -1,5 +1,6 @@
 use std::io::IsTerminal;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use clap::Parser;
 use csvizmo::csv::{
@@ -138,8 +139,10 @@ fn main() -> eyre::Result<()> {
         output.write_record(new_header.iter())?;
     }
 
+    let start = Instant::now();
+
     if args.center_mean {
-        tracing::debug!("Mean-centering column {column_index}");
+        tracing::info!("Mean-centering column {column_index}");
         let records = exit_after_first_failed_read(input.into_records());
         let records = parse_column_records(records, column_index);
 
@@ -156,7 +159,7 @@ fn main() -> eyre::Result<()> {
             output.write_record(record.iter())?;
         }
     } else if args.center_first {
-        tracing::debug!("Centering column {column_index} around its first value");
+        tracing::info!("Centering column {column_index} around its first value");
         let records = exit_after_first_failed_read(input.into_records());
         let mut records = records.peekable();
 
@@ -170,7 +173,7 @@ fn main() -> eyre::Result<()> {
             output.write_record(record.iter())?;
         }
     } else if let Some(value) = args.center_value {
-        tracing::debug!("Centering column {column_index} around the value {value}");
+        tracing::info!("Centering column {column_index} around the value {value}");
         let records = exit_after_first_failed_read(input.into_records());
         let records = parse_column_records(records, column_index);
         let records =
@@ -202,6 +205,8 @@ fn main() -> eyre::Result<()> {
             output.write_record(record.iter())?;
         }
     }
+
+    tracing::info!("Finished after {:?}", start.elapsed());
 
     output.flush()?;
 

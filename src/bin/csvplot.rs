@@ -1,5 +1,6 @@
 use std::io::IsTerminal;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use clap::Parser;
 use csvizmo::csv::{column_index, exit_after_first_failed_read, parse_multi_columns};
@@ -89,6 +90,8 @@ fn main() -> eyre::Result<()> {
         .delimiter(args.delimiter as u8)
         .from_reader(input);
 
+    let parse_start = Instant::now();
+
     let header = reader.headers()?.clone();
 
     let mut ylabels = Vec::new();
@@ -114,6 +117,9 @@ fn main() -> eyre::Result<()> {
     let mut data = parse_multi_columns(records, &column_indices);
     assert!(!data.is_empty());
 
+    tracing::info!("Parsed data after {:?}", parse_start.elapsed());
+
+    let figure_start = Instant::now();
     let mut fig = gnuplot::Figure::new();
     let axes = fig.axes2d();
 
@@ -179,6 +185,11 @@ fn main() -> eyre::Result<()> {
         let name = path.file_stem().unwrap().to_string_lossy();
         fig.set_title(&name);
     }
+    tracing::info!(
+        "Created figure after {:?} (total {:?})",
+        figure_start.elapsed(),
+        parse_start.elapsed()
+    );
     if args.verbose {
         fig.echo(&mut std::io::stdout());
     }

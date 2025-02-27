@@ -1,5 +1,6 @@
 use std::io::{BufReader, IsTerminal};
 use std::path::PathBuf;
+use std::time::Instant;
 
 use clap::Parser;
 use csv::Writer;
@@ -44,6 +45,8 @@ fn main() -> eyre::Result<()> {
     let output = get_output_writer(&args.output)?;
     let mut writer = Writer::from_writer(output);
 
+    let start = Instant::now();
+
     let msgs = CandumpParser::new(input);
     let msgs = msgs.filter_map(|f| {
         f.inspect_err(|e| tracing::warn!("Failed to parse msg: {e}"))
@@ -60,6 +63,7 @@ fn main() -> eyre::Result<()> {
             tracing::warn!("Failed to serialize msg: {e}");
         }
     }
+    tracing::info!("Finished after {:?}", start.elapsed());
 
     Ok(())
 }
