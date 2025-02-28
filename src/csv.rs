@@ -114,19 +114,6 @@ where
     records.map(move |record| parse_field(&record, index))
 }
 
-/// Compute the summary statistics of the given values
-pub fn column_stats<'v, V>(values: V) -> rolling_stats::Stats<f64>
-where
-    // TODO: Augment the rolling Stats with missing data counter?
-    V: Iterator<Item = &'v f64>,
-{
-    let mut stats = rolling_stats::Stats::new();
-    for value in values {
-        stats.update(*value);
-    }
-    stats
-}
-
 /// Parse multiple fields at once from the CSV records
 ///
 /// Return value is a vector of columns. Any parse failures are indicated with a `f64::NAN`.

@@ -4,9 +4,10 @@ use std::time::Instant;
 
 use clap::Parser;
 use csvizmo::csv::{
-    column_index, column_stats, exit_after_first_failed_read, map_column_records,
-    parse_column_records, parse_field,
+    column_index, exit_after_first_failed_read, map_column_records, parse_column_records,
+    parse_field,
 };
+use csvizmo::stats::OnlineStats;
 use csvizmo::stdio::{get_input_reader, get_output_writer};
 
 /// Compute inter-row deltas on a column from a CSV
@@ -150,7 +151,7 @@ fn main() -> eyre::Result<()> {
         // be just to read the input file twice, which for very very large files, might be better?
         let records: Vec<_> = records.collect();
         let values = records.iter().flat_map(|(_rec, maybe_value)| maybe_value);
-        let stats = column_stats(values);
+        let stats = OnlineStats::from_unsorted_iter(values);
 
         let records = map_column_records(records.into_iter(), |maybe_value| {
             maybe_value.map(|v| v - stats.mean).ok()
