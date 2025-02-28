@@ -39,18 +39,20 @@ on a 1 hour candump, but 23s with a debug build.
 * [x] `can2csv` - format a `can-utils` candump into a CSV file
 * [x] `canspam` - generate lots of random CAN messages for testing
 * [x] `can2k` - a NMEA2000 candump parser
+  * [ ] parse GPS time
 * [ ] `csvbits` - parse bitfields out of a CSV column
 * [ ] `csvjitter` - add some random noise to a CSV column
 * [ ] `csvcomm` - find where two CSV files overlap
 * [x] `csvdelta` - inter-row deltas and value centering
-* [ ] `csvstats` - calculate 5-number summary statistics
+* [x] `csvstats` - calculate 5-number summary statistics
   * [ ] plot histogram and pde estimation
 * [ ] `csvoutlier` - outlier detection and filtering
 * [x] `csvplot` - line, scatter, and time series plots
 
 ## csvplot
 
-Plot data from a CSV file
+Plot data from a CSV file. Supports line (X & Y) and time series (Y only) plots. Multiple columns
+can be plotted at once, so long as they share the same X axis.
 
 ```sh
 $ head session-2.csv
@@ -62,6 +64,23 @@ $ csvplot -y rolls session-2.csv
 ```
 
 ![D&D rolls](./data/session-2-rolls.png)
+
+## csvstats
+
+Calculate summary statistics for CSV columns.
+
+```sh
+$ csvstats session-s.csv
+Stats for column "roll":
+    count: 21
+    Q1: 5
+    median: 8
+    Q3: 14
+    min: 2 at index: 0
+    max: 18 at index: 19
+    mean: 9.571428571428571
+    stddev: 5.401964631566671
+```
 
 ## can2k
 
@@ -78,8 +97,8 @@ src,seq_id,longitude_deg,latitude_deg,altitude_m,sog_mps,cog_deg_cwfn,cog_ref,me
 
 ## csvdelta
 
-Useful for understanding the time between events. Also supports mean-centering a column, or
-centering it around a specific value.
+Calculate the inter-row deltas for a CSV column. Useful for understanding the time between events.
+Also supports mean-centering a column, or centering it around a specific value.
 
 ```sh
 $ csvdelta --column foo <<EOF
@@ -99,8 +118,10 @@ foo,bar,foo-deltas
 
 ## can2csv
 
-Faster than `sed`, and also parses the canid. Useful in conjunction with `csvdelta` to understand
-message timing.
+Parse basic data from a CAN frame into a CSV record. Faster than `sed`, and also parses the canid.
+Useful in conjunction with `csvdelta` to understand message timing.
+
+`can2csv` is not a real CAN parser, and does not understand any of the data transmitted via CAN.
 
 ```sh
 $ head -n 3 data/candump-random-data.log | can2csv

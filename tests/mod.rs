@@ -1,5 +1,6 @@
 mod test_can2csv;
 mod test_csvdelta;
+mod test_csvstats;
 
 use std::path::PathBuf;
 use std::process::Output;
@@ -11,6 +12,7 @@ use assert_cmd::Command;
 // future lookups.
 static CAN2CSV: LazyLock<PathBuf> = LazyLock::new(|| assert_cmd::cargo::cargo_bin("can2csv"));
 static CSVDELTA: LazyLock<PathBuf> = LazyLock::new(|| assert_cmd::cargo::cargo_bin("csvdelta"));
+static CSVSTATS: LazyLock<PathBuf> = LazyLock::new(|| assert_cmd::cargo::cargo_bin("csvstats"));
 
 pub trait CommandExt {
     /// Same as [Command::output] except with hooks to print stdout/stderr in failed tests
@@ -37,6 +39,12 @@ pub fn can2csv() -> Command {
 
 pub fn csvdelta() -> Command {
     let mut cmd = Command::new(&*CSVDELTA);
+    cmd.arg("--log-level=TRACE");
+    cmd
+}
+
+pub fn csvstats() -> Command {
+    let mut cmd = Command::new(&*CSVSTATS);
     cmd.arg("--log-level=TRACE");
     cmd
 }
