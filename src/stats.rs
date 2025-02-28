@@ -208,6 +208,18 @@ impl OnlineStats {
         nan_safe_sort(data);
         Self::from_sorted(data, min, max)
     }
+
+    // Skips quartiles
+    pub fn from_unsorted_iter<'v, V>(values: V) -> Self
+    where
+        V: Iterator<Item = &'v f64>,
+    {
+        let mut stats = Self::new();
+        for value in values {
+            stats.update(*value);
+        }
+        stats
+    }
 }
 
 #[cfg(test)]
