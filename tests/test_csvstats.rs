@@ -48,9 +48,9 @@ Stats for column \"rolls-session-1\":
 Stats for column \"rolls-session-2\":
     count: 21
     filtered: 3 (total: 24)
-    Q1: 5.5
-    median: 12
-    Q3: 15
+    Q1: 5
+    median: 8
+    Q3: 14
     min: 2 at index: 0
     max: 18 at index: 19
     mean: 9.571428571428571
