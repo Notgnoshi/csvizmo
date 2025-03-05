@@ -1,4 +1,5 @@
 pub mod can;
+pub mod counter;
 pub mod csv;
 pub mod stats;
 pub mod stdio;
