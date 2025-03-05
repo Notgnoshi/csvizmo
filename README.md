@@ -36,18 +36,7 @@ on a 1 hour candump, but 23s with a debug build.
 
 # Gizmos
 
-* [x] `can2csv` - format a `can-utils` candump into a CSV file
-* [x] `canspam` - generate lots of random CAN messages for testing
-* [x] `can2k` - a NMEA2000 candump parser
-  * [ ] parse GPS time
-* [ ] `csvbits` - parse bitfields out of a CSV column
-* [ ] `csvjitter` - add some random noise to a CSV column
-* [ ] `csvcomm` - find where two CSV files overlap
-* [x] `csvdelta` - inter-row deltas and value centering
-* [x] `csvstats` - calculate 5-number summary statistics
-  * [ ] plot histogram and pde estimation
-* [ ] `csvoutlier` - outlier detection and filtering
-* [x] `csvplot` - line, scatter, and time series plots
+See <https://github.com/Notgnoshi/csvizmo/labels/gizmo> for the gizmos I have planned.
 
 ## csvplot
 
@@ -63,14 +52,14 @@ roll
 $ csvplot -y rolls session-2.csv
 ```
 
-![D&D rolls](./data/session-2-rolls.png)
+![D&D rolls time series](./data/session-2-rolls.png)
 
 ## csvstats
 
 Calculate summary statistics for CSV columns.
 
 ```sh
-$ csvstats session-s.csv
+$ csvstats --column roll session-2.csv
 Stats for column "roll":
     count: 21
     Q1: 5
@@ -81,6 +70,14 @@ Stats for column "roll":
     mean: 9.571428571428571
     stddev: 5.401964631566671
 ```
+
+`csvstats` can also generate histogram plots
+
+```sh
+$ csvstats --column roll session-2.csv --histogram --bins 20 --count-discrete
+```
+
+![D&D roll histogram](./data/session-2-histogram.png)
 
 ## can2k
 
@@ -129,3 +126,12 @@ timestamp,interface,canid,dlc,priority,src,dst,pgn,data
 1739229594.465994,can0,0xE9790B5,8,3,0xB5,0x90,0x29700,CA3F871A5A6EE75F
 1739229594.467052,can0,0xD15F192,8,3,0x92,0xF1,0x11500,500B3766CB2DED7C
 ```
+
+If you pass `--reconstruct`, then `can2csv` will reconstruct any transport layer sessions it can
+understand. Right now that's just NMEA 2000 Fast Packet, but ISO-11783 Transport Protocol is
+planned.
+
+## canspam
+
+The [canspam](./scripts/canspam) script can generate random CAN traffic on a Linux CAN device. It's
+useful for inflating busload, or for generating random traffic to test `can2csv` against ;)
