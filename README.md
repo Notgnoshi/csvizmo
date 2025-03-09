@@ -19,11 +19,17 @@ pipes. Any ancillary output is emitted on stderr.
 You can install the gizmos with
 
 ```sh
-# Will install to ~/.cargo/bin/
-cargo install --path .
-# Will install to ~/.local/bin/
+./install --prefix ~/.local/
+./install --uninstall --prefix ~/.local/
+```
+
+You can also do just
+
+```sh
 cargo install --path . --root ~/.local/
 ```
+
+but that won't install any of the non-Rust scripts from this project.
 
 You can also just experiment the gizmos by
 

@@ -1,0 +1,190 @@
+#!/bin/bash
+set -o errexit
+set -o pipefail
+set -o nounset
+set -o noclobber
+
+CSVIZMO_REPO_ROOT=$(git rev-parse --show-toplevel)
+
+RED="\033[31m"
+GREEN="\033[32m"
+BLUE="\033[34m"
+RESET="\033[0m"
+
+debug() {
+    echo -e "${BLUE}DEBUG:${RESET} $*" >&2
+}
+
+info() {
+    echo -e "${GREEN}INFO:${RESET} $*" >&2
+}
+
+error() {
+    echo -e "${RED}ERROR:${RESET} $*" >&2
+}
+
+usage() {
+    echo "Install/update/uninstall the csvizmo tools and scripts"
+    echo
+    echo "Usage: $0 [--help]"
+    echo
+    echo "  --help, -h              Show this help and exit"
+    echo "  --dry-run,-n            Don't actually install the tools"
+    echo "  --remove,-r             Uninstall the csvizmo tools"
+    echo "  --prefix,-p <PREFIX>    The installation prefix. By default, tries paths in the following order:"
+    echo "                            1. \$CARGO_HOME, if set"
+    echo "                            2. ~/.cargo, if present"
+    echo "                            3. ~/.local/bin, if in the users \$PATH"
+    echo "                            4. ~/bin, if in the users \$PATH"
+}
+
+default_prefix() {
+    local prefix=""
+    if [[ -n "${CARGO_HOME+x}" ]]; then
+        prefix="$CARGO_HOME"
+    elif [[ -d ~/.cargo ]]; then
+        prefix="$HOME/.cargo"
+    elif [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
+        prefix="$HOME/.local"
+    elif [[ ":$PATH:" == *":$HOME/bin:"* ]]; then
+        prefix="$HOME/bin"
+    fi
+
+    echo "$prefix"
+}
+
+csvizmo_binaries() {
+    # This is "better", but it also requires jq as a dependency:
+    #
+    # cargo metadata --no-deps --format-version 1 |
+    #   jq '.packages[] |
+    #       select(.name == "csvizmo") |
+    #       .targets[] |
+    #       .select(.kind == ["bin"])
+    #  '
+    local -r bindir="$CSVIZMO_REPO_ROOT/src/bin"
+    for bin in "$bindir"/*.rs; do
+        bin="$(basename -- "$bin")"
+        bin="${bin%.*}"
+        if [[ "$bin" != "template" ]]; then
+            echo "$bin"
+        fi
+    done
+}
+
+csvizmo_scripts() {
+    for script in "$CSVIZMO_REPO_ROOT/scripts"/*; do
+        echo "$script"
+    done
+}
+
+install_csvizmo() {
+    local -r dry_run="$1"
+    local -r prefix="$2"
+
+    info "Installing Rust binaries to $prefix ..."
+    local cargo_cmd=(
+        cargo install --path "$CSVIZMO_REPO_ROOT" --root "$prefix"
+    )
+    if [[ "$dry_run" = "true" ]]; then
+        # NOTE: This flag is unstable
+        # cargo_cmd+=("--dry-run")
+        info "Dry run. Would have run:"
+        cargo_cmd=(echo "${cargo_cmd[@]}")
+    fi
+    for bin in $(csvizmo_binaries); do
+        cargo_cmd+=(--bin "$bin")
+    done
+    "${cargo_cmd[@]}"
+
+    info "Installing project scripts to $prefix ..."
+    for script in $(csvizmo_scripts); do
+        if [[ "$dry_run" = "true" ]]; then
+            info "Dry run. Would have installed '$script'"
+        else
+            info "Installing $script ..."
+            if [[ ! -d "$prefix/bin" ]]; then
+                mkdir -p "$prefix/bin"
+            fi
+            cp "$script" "$prefix/bin"
+        fi
+    done
+}
+
+uninstall_csvizmo() {
+    local -r dry_run="$1"
+    local -r prefix="$2"
+
+    info "Uninstalling csvizmo ..."
+    cargo_cmd=(cargo uninstall csvizmo)
+
+    if [[ "$dry_run" = "false" ]]; then
+        "${cargo_cmd[@]}"
+    else
+        echo "Dry run. Would have run: '${cargo_cmd[*]}'"
+    fi
+    info "Uninstalling project scripts from $prefix ..."
+    for script in $(csvizmo_scripts); do
+        script="$(basename -- "$script")"
+        script="$prefix/bin/$script"
+        if [[ -f "$script" ]]; then
+            if [[ "$dry_run" = "true" ]]; then
+                info "Dry run. Would have deleted '$script' ..."
+            else
+                info "Deleting '$script' ..."
+                rm "$script"
+            fi
+        fi
+    done
+}
+
+main() {
+    local operation="install"
+    local dry_run="false"
+    local prefix
+    prefix="$(default_prefix)"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        --help | -h)
+            usage
+            exit 0
+            ;;
+        --dry-run | -n | -d)
+            dry_run="true"
+            ;;
+        --remove | --uninstall | -r | -u)
+            operation="uninstall"
+            ;;
+        --prefix | -p)
+            prefix="$2"
+            shift
+            ;;
+        -*)
+            error "Unexpected option: '$1'"
+            exit 1
+            ;;
+        *)
+            error "Unexpected positional argument: '$1'"
+            exit 1
+            ;;
+        esac
+        shift
+    done
+
+    if [[ ! -d "$prefix" ]]; then
+        error "No such directory '$prefix'"
+        return 1
+    fi
+
+    case "$operation" in
+    install)
+        install_csvizmo "$dry_run" "$prefix"
+        ;;
+    uninstall)
+        uninstall_csvizmo "$dry_run" "$prefix"
+        ;;
+    esac
+}
+
+main "$@"
