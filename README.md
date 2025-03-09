@@ -80,7 +80,7 @@ Stats for column "roll":
 `csvstats` can also generate histogram plots
 
 ```sh
-$ csvstats --column roll session-2.csv --histogram --bins 20 --count-discrete
+$ csvstats --column roll session-2.csv --histogram --bins 20 --discrete
 ```
 
 ![D&D roll histogram](./data/session-2-histogram.png)
