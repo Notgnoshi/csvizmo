@@ -58,21 +58,6 @@ fn quartiles_impl(data: &[f64]) -> Option<(f64, f64, f64)> {
     }
 }
 
-pub fn nan_safe_sort(data: &mut [f64]) {
-    data.sort_unstable_by(|a, b| {
-        // This sorts the NaNs to the upper range
-        if a.is_nan() && b.is_nan() {
-            std::cmp::Ordering::Equal
-        } else if a.is_nan() {
-            std::cmp::Ordering::Greater
-        } else if b.is_nan() {
-            std::cmp::Ordering::Less
-        } else {
-            a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-        }
-    });
-}
-
 #[derive(Debug, Clone)]
 pub struct OnlineStats {
     pub num: usize,
@@ -224,7 +209,14 @@ impl OnlineStats {
     }
 
     pub fn from_unsorted(data: &mut [f64], min: Option<f64>, max: Option<f64>) -> Self {
-        nan_safe_sort(data);
+        // sound, because OrderedFloat is a repr(transparent) newtype
+        let data = unsafe {
+            std::mem::transmute::<&mut [f64], &mut [ordered_float::OrderedFloat<f64>]>(data)
+        };
+        data.sort_unstable();
+        let data = unsafe {
+            std::mem::transmute::<&mut [ordered_float::OrderedFloat<f64>], &mut [f64]>(data)
+        };
         Self::from_sorted(data, min, max)
     }
 
@@ -264,34 +256,5 @@ mod tests {
         let data = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let qs = quartiles(&data).unwrap();
         assert_eq!(qs, (1.0, 3.0, 5.0));
-    }
-
-    #[test]
-    fn test_sort_floats() {
-        let mut data = [1.0, 0.0, -0.0, 2.0];
-        let expected = [-0.0, 0.0, 1.0, 2.0];
-        nan_safe_sort(&mut data);
-        assert_eq!(data, expected);
-    }
-
-    #[test]
-    fn test_sort_floats_with_nans() {
-        let mut data = [
-            3.0,
-            -1.0,
-            f64::NEG_INFINITY,
-            f64::INFINITY,
-            f64::NAN,
-            -0.0,
-            0.0,
-            f64::NAN,
-            2.0,
-        ];
-        let expected = [f64::NEG_INFINITY, -1.0, -0.0, 0.0, 2.0, 3.0, f64::INFINITY];
-        nan_safe_sort(&mut data);
-        assert_eq!(data[..7], expected);
-        // NaNs don't compare equal, so filter them out
-        assert!(data[7].is_nan());
-        assert!(data[8].is_nan());
     }
 }

@@ -184,6 +184,9 @@ fn main() -> eyre::Result<()> {
     if let Some(path) = args.input {
         let name = path.file_stem().unwrap().to_string_lossy();
         fig.set_title(&name);
+        fig.set_pre_commands(&format!("set terminal qt title '{name} csvplot'"));
+    } else {
+        fig.set_pre_commands("set terminal qt title 'csvplot'");
     }
     tracing::info!(
         "Created figure after {:?} (total {:?})",
