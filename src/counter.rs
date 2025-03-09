@@ -78,6 +78,18 @@ where
     }
 }
 
+impl<T> IntoIterator for Counter<T>
+where
+    T: Eq + Hash,
+{
+    type Item = (T, u64);
+    type IntoIter = std::collections::hash_map::IntoIter<T, u64>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.counts.into_iter()
+    }
+}
+
 impl<T> Index<&T> for Counter<T>
 where
     T: Eq + Hash,

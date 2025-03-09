@@ -3,12 +3,11 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use clap::Parser;
-use csvizmo::counter::Counter;
 use csvizmo::csv::{column_index, exit_after_first_failed_read, parse_multi_columns};
 use csvizmo::plot::Axes2DExt;
 use csvizmo::stats::OnlineStats;
 use csvizmo::stdio::get_input_reader;
-use gnuplot::{AutoOption, AxesCommon, PlotOption};
+use gnuplot::AxesCommon;
 
 /// Calculate summary statistics for a column in a CSV
 ///
@@ -45,7 +44,7 @@ struct Args {
     /// If not set, the variable will be assumed to be continuous, and the bins will be linspaced
     /// between [min..max]
     #[clap(long)]
-    count_discrete: bool,
+    discrete: bool,
 
     /// Filter out values less than this minimum
     #[clap(short = 'm', long)]
@@ -134,59 +133,21 @@ fn main() -> eyre::Result<()> {
         stats_start.elapsed(),
         parse_start.elapsed()
     );
+    if !args.histogram {
+        return Ok(());
+    }
 
     for (colname, col_data, stats) in itertools::izip!(args.column.iter(), data, all_stats) {
-        let min = if let Some(m) = args.min { m } else { stats.min };
-        let max = if let Some(m) = args.max { m } else { stats.max };
-
-        // If number of bins is given, then linspace the range [min..max]. Otherwise use the
-        // Freedman-Diaconis rule to calculate the binwidth.
-        let (bin_width, num_bins) = if let Some(num_bins) = args.bins {
-            let bin_width = (max - min) / (num_bins as f64);
-            (bin_width, num_bins)
-        } else {
-            // https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
-            let iqr = stats.q3.unwrap() - stats.q1.unwrap();
-            let bin_width = 2.0 * iqr / (stats.num as f64).cbrt();
-
-            let num_bins = (max - min) / bin_width;
-            let num_bins = num_bins.ceil() as usize;
-            (bin_width, num_bins)
-        };
-        tracing::debug!("Using {num_bins} bins of width {bin_width} for column {colname:?}");
-
-        if !args.histogram {
-            continue;
-        }
-
         let mut fig = gnuplot::Figure::new();
         let axes = fig.axes2d();
 
-        if args.count_discrete {
-            let ord_data = unsafe {
-                std::mem::transmute::<Vec<f64>, Vec<ordered_float::OrderedFloat<f64>>>(col_data)
-            };
-            let counter = Counter::new(ord_data);
-            let num_bins = args.bins.unwrap_or(counter.len());
-            let bin_width = (max - min) / (num_bins as f64);
-
-            axes.histplot_discrete(&counter, bin_width, &[PlotOption::BorderColor("black")]);
-            // TODO: set xticks on every discrete value if there's a small enough number of them?
+        if args.discrete {
+            axes.histplot_discrete(col_data, &stats, args.min, args.max, args.bins);
         } else {
-            axes.histplot_continuous(
-                col_data,
-                min,
-                num_bins,
-                bin_width,
-                &[PlotOption::BorderColor("black")],
-            );
+            axes.histplot_continuous(col_data, &stats, args.min, args.max, args.bins);
         }
 
         axes.set_x_label(colname, &[]);
-        axes.set_x_range(
-            AutoOption::Fix(min - 0.1 * stats.stddev()),
-            AutoOption::Fix(max + 0.1 * stats.stddev()),
-        );
         if let Some(path) = args.input.as_ref() {
             let name = path.file_stem().unwrap().to_string_lossy();
             fig.set_title(&name);
