@@ -49,7 +49,7 @@ impl Axes2DExt for Axes2D {
             0.0
         };
 
-        let mut items: Vec<_> = counter.into_iter().collect();
+        let mut items: Vec<_> = counter.into_iter().filter(|(x, _)| !x.is_nan()).collect();
         items.sort_unstable_by_key(|(x, _count)| *x);
         let (x, counts): (Vec<_>, Vec<_>) = items.into_iter().unzip();
         let x = unsafe { std::mem::transmute::<Vec<OrderedFloat<f64>>, Vec<f64>>(x) };
@@ -144,7 +144,8 @@ impl Axes2DExt for Axes2D {
         }
         let max_count = max_count as f64;
 
-        let kde = KernelDensityEstimator::new(x.as_slice(), Silverman, Normal);
+        let x: Vec<_> = x.into_iter().filter(|x| !x.is_nan()).collect();
+        let kde = KernelDensityEstimator::new(x, Silverman, Normal);
         let median_pdf = kde.pdf(&[stats.median.unwrap_or(stats.mean)])[0];
         let sample_points: Vec<_> = itertools_num::linspace(min, max, num_bins * 2).collect();
         let pdf_samples = kde
