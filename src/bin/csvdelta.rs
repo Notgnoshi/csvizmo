@@ -151,7 +151,7 @@ fn main() -> eyre::Result<()> {
         // be just to read the input file twice, which for very very large files, might be better?
         let records: Vec<_> = records.collect();
         let values = records.iter().flat_map(|(_rec, maybe_value)| maybe_value);
-        let stats = OnlineStats::from_unsorted_iter(values);
+        let stats = OnlineStats::from_unsorted_iter(values, None, None);
 
         let records = map_column_records(records.into_iter(), |maybe_value| {
             maybe_value.map(|v| v - stats.mean).ok()

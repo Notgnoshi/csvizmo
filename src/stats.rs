@@ -127,8 +127,8 @@ impl OnlineStats {
     /// An online variance update
     ///
     /// NOTE: the q1, q2 (median), and q3 quartiles cannot be updated in an online manner, and are
-    /// skipped by this method. If you want quartile measurement, use [Self::from_sorted] or
-    /// [Self::from_unsorted].
+    /// skipped by this method. If you want quartile measurement, use [Self::from_unsorted_mut] or
+    /// [Self::from_sorted].
     ///
     /// TODO: It appears there are online *estimation* algorithms for quantiles. But since I have
     /// to collect the data stream into a Vec for histogram plotting anyways, an online algorithm
@@ -169,7 +169,55 @@ impl OnlineStats {
         self.variance().sqrt()
     }
 
+    /// Will sort the data in-place and calculate summary stats and quartiles
+    pub fn from_unsorted_mut(data: &mut [f64], min: Option<f64>, max: Option<f64>) -> Self {
+        let mut this = Self::from_unsorted_iter(data.iter(), min, max);
+
+        // sound, because OrderedFloat is a repr(transparent) newtype
+        let data = unsafe {
+            std::mem::transmute::<&mut [f64], &mut [ordered_float::OrderedFloat<f64>]>(data)
+        };
+        data.sort_unstable();
+        let data = unsafe {
+            std::mem::transmute::<&mut [ordered_float::OrderedFloat<f64>], &mut [f64]>(data)
+        };
+
+        // TODO: Investigate online quartile estimation algorithms. There doesn't seem to be a
+        // "here's the answer" algorithm, and there seems to be lots of possible ones to pick from.
+        // t-digest seems promising? https://github.com/tdunning/t-digest although it looks like I
+        // may need to write my own online implementation.
+        //
+        // I think the public API of this OnlineStats tool could use some polishing. If I can get
+        // an online t-digest, then it should use an online-only API, and throw out the &[f64] APIs
+        // entirely.
+        //
+        // Since csvstats reads the CSV data into memory anyways, sorting and doing the "real"
+        // quartile calculation is probably the best choice for it, but other tools might benefit
+        // from a real online version.
+        if let Some((q1, q2, q3)) = quartiles(data) {
+            this.q1 = Some(q1);
+            this.median = Some(q2);
+            this.q3 = Some(q3);
+        }
+        this
+    }
+
+    /// Given sorted data, will calculate both summary stats and quartiles
     pub fn from_sorted(data: &[f64], min: Option<f64>, max: Option<f64>) -> Self {
+        let mut this = Self::from_unsorted_iter(data.iter(), min, max);
+        if let Some((q1, q2, q3)) = quartiles(data) {
+            this.q1 = Some(q1);
+            this.median = Some(q2);
+            this.q3 = Some(q3);
+        }
+        this
+    }
+
+    /// Given unsorted data, will calculate summary stats, skipping quartile calculations
+    pub fn from_unsorted_iter<'v, V>(data: V, min: Option<f64>, max: Option<f64>) -> Self
+    where
+        V: Iterator<Item = &'v f64>,
+    {
         let mut stats = Self::new();
         for sample in data {
             if let Some(min) = min {
@@ -185,49 +233,6 @@ impl OnlineStats {
                 }
             }
             stats.update(*sample);
-        }
-
-        // TODO: Investigate online quartile estimation algorithms. There doesn't seem to be a
-        // "here's the answer" algorithm, and there seems to be lots of possible ones to pick from.
-        // t-digest seems promising? https://github.com/tdunning/t-digest although it looks like I
-        // may need to write my own online implementation.
-        //
-        // I think the public API of this OnlineStats tool could use some polishing. If I can get
-        // an online t-digest, then it should use an online-only API, and throw out the &[f64] APIs
-        // entirely.
-        //
-        // Since csvstats reads the CSV data into memory anyways, sorting and doing the "real"
-        // quartile calculation is probably the best choice for it, but other tools might benefit
-        // from a real online version.
-        if let Some((q1, q2, q3)) = quartiles(data) {
-            stats.q1 = Some(q1);
-            stats.median = Some(q2);
-            stats.q3 = Some(q3);
-        }
-
-        stats
-    }
-
-    pub fn from_unsorted(data: &mut [f64], min: Option<f64>, max: Option<f64>) -> Self {
-        // sound, because OrderedFloat is a repr(transparent) newtype
-        let data = unsafe {
-            std::mem::transmute::<&mut [f64], &mut [ordered_float::OrderedFloat<f64>]>(data)
-        };
-        data.sort_unstable();
-        let data = unsafe {
-            std::mem::transmute::<&mut [ordered_float::OrderedFloat<f64>], &mut [f64]>(data)
-        };
-        Self::from_sorted(data, min, max)
-    }
-
-    // Skips quartiles
-    pub fn from_unsorted_iter<'v, V>(values: V) -> Self
-    where
-        V: Iterator<Item = &'v f64>,
-    {
-        let mut stats = Self::new();
-        for value in values {
-            stats.update(*value);
         }
         stats
     }
