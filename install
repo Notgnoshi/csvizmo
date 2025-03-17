@@ -32,22 +32,22 @@ usage() {
     echo "  --dry-run,-n            Don't actually install the tools"
     echo "  --remove,-r             Uninstall the csvizmo tools"
     echo "  --prefix,-p <PREFIX>    The installation prefix. By default, tries paths in the following order:"
-    echo "                            1. \$CARGO_HOME, if set"
-    echo "                            2. ~/.cargo, if present"
-    echo "                            3. ~/.local/bin, if in the users \$PATH"
-    echo "                            4. ~/bin, if in the users \$PATH"
+    echo "                            1. ~/.local/bin/, if in the users \$PATH"
+    echo "                            2. ~/bin/, if in the users \$PATH"
+    echo "                            3. \$CARGO_HOME, if set"
+    echo "                            4. ~/.cargo/bin/, if present"
 }
 
 default_prefix() {
     local prefix=""
-    if [[ -n "${CARGO_HOME+x}" ]]; then
-        prefix="$CARGO_HOME"
-    elif [[ -d ~/.cargo ]]; then
-        prefix="$HOME/.cargo"
-    elif [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
+    if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
         prefix="$HOME/.local"
     elif [[ ":$PATH:" == *":$HOME/bin:"* ]]; then
         prefix="$HOME/bin"
+    elif [[ -n "${CARGO_HOME+x}" ]]; then
+        prefix="$CARGO_HOME"
+    elif [[ -d ~/.cargo ]]; then
+        prefix="$HOME/.cargo"
     fi
 
     echo "$prefix"

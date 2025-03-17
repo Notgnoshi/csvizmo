@@ -41,9 +41,9 @@ Stats for column \"rolls-session-1\":
     median: 10
     Q3: 13
     min: 2 at index: 0
-    max: 20 at index: 23
-    mean: 9.791666666666668
-    stddev: 6.476315746532907
+    max: 20 at index: 4
+    mean: 9.791666666666664
+    stddev: 6.93178623865251
 
 Stats for column \"rolls-session-2\":
     count: 21
@@ -51,10 +51,10 @@ Stats for column \"rolls-session-2\":
     Q1: 5
     median: 8
     Q3: 14
-    min: 2 at index: 0
-    max: 18 at index: 19
-    mean: 9.571428571428571
-    stddev: 5.401964631566671\n\n\
+    min: 2 at index: 5
+    max: 18 at index: 14
+    mean: 9.571428571428573
+    stddev: 5.803823252952202\n\n\
     ";
 
     let mut cmd = csvstats();

@@ -120,7 +120,7 @@ fn main() -> eyre::Result<()> {
 
     let mut all_stats = Vec::new();
     for (colname, col_data) in args.column.iter().zip(&mut data) {
-        let stats = OnlineStats::from_unsorted(col_data, args.min, args.max);
+        let stats = OnlineStats::from_unsorted_mut(col_data, args.min, args.max);
 
         println!("Stats for column {colname:?}:");
         println!("{stats}");
