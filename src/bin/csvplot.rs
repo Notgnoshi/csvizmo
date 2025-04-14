@@ -155,7 +155,7 @@ fn main() -> eyre::Result<()> {
 
         // TODO: Color each column differently
         // TODO: Try to mirror seaborn's default style
-        let mut options = Vec::new();
+        let mut options = vec![gnuplot::PlotOption::LineWidth(2.0)];
         if has_header {
             options.push(gnuplot::PlotOption::Caption(yname));
         }

@@ -148,6 +148,8 @@ fn main() -> eyre::Result<()> {
         }
 
         axes.set_x_label(colname, &[]);
+        axes.set_x_grid(true);
+        axes.set_y_grid(true);
         if let Some(path) = args.input.as_ref() {
             let name = path.file_stem().unwrap().to_string_lossy();
             fig.set_title(&name);
