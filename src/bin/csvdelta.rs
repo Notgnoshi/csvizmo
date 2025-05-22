@@ -100,7 +100,7 @@ fn main() -> eyre::Result<()> {
         let tmp = tempfile::Builder::new()
             .prefix(".csvdelta")
             .suffix(".csv")
-            .keep(true)
+            .disable_cleanup(true)
             .tempfile_in(input_dir)?;
         args.output = Some(tmp.path().to_path_buf());
         tmp_output = Some(tmp);
