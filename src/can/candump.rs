@@ -87,12 +87,11 @@ fn strip_outer_brackets(field: &str, first: char, last: char) -> &str {
     } else {
         field
     };
-    let field = if let Some(stripped) = field.strip_suffix(last) {
+    if let Some(stripped) = field.strip_suffix(last) {
         stripped
     } else {
         field
-    };
-    field
+    }
 }
 
 /// Parse candumps with the format
