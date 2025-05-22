@@ -24,6 +24,9 @@ struct Args {
 
     /// Path to the input. stdin if '-' or if not passed
     input: Option<PathBuf>,
+    /// Path to an output filename. PDF, EPS, PNG, SVG, or HTML file extensions are supported
+    #[clap(short, long)]
+    output: Option<PathBuf>,
 
     /// Indicate the input CSV does not have a header
     #[clap(long)]
@@ -159,6 +162,21 @@ fn main() -> eyre::Result<()> {
         }
         if args.verbose {
             fig.echo(&mut std::io::stdout());
+        }
+        if let Some(output) = &args.output {
+            let Some(ext) = output.extension() else {
+                eyre::bail!("Output file must have a valid extension");
+            };
+            let terminal = match ext.to_string_lossy().as_ref() {
+                "pdf" | "PDF" => "pdfcairo",
+                "eps" | "EPS" => "epscairo",
+                "png" | "PNG" => "pngcairo",
+                "svg" | "SVG" => "svg",
+                "html" | "HTML" => "canvas",
+                _ => eyre::bail!("Unsupported output extension '{ext:?}'"),
+            };
+
+            fig.set_terminal(terminal, output.as_os_str().to_string_lossy().as_ref());
         }
         fig.show()?;
     }
