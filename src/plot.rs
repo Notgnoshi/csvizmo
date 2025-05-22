@@ -1,4 +1,4 @@
-use gnuplot::{AutoOption, Axes2D, AxesCommon, PlotOption};
+use gnuplot::{AutoOption, Axes2D, AxesCommon, ColorType, PlotOption};
 use kernel_density_estimation::prelude::*;
 use ordered_float::OrderedFloat;
 
@@ -53,7 +53,7 @@ impl Axes2DExt for Axes2D {
         items.sort_unstable_by_key(|(x, _count)| *x);
         let (x, counts): (Vec<_>, Vec<_>) = items.into_iter().unzip();
         let x = unsafe { std::mem::transmute::<Vec<OrderedFloat<f64>>, Vec<f64>>(x) };
-        let widths = std::iter::repeat(bin_width);
+        let widths = std::iter::repeat_n(bin_width, x.len()).collect();
 
         let kde = KernelDensityEstimator::new(x.as_slice(), Silverman, Normal);
         // TODO: This scaling needs tuning I think. It makes the assumption that the median is
@@ -73,11 +73,13 @@ impl Axes2DExt for Axes2D {
             AutoOption::Fix(max + 0.1 * stats.stddev()),
         );
         self.set_y_label("Count", &[]);
-        self.boxes_set_width(
+        self.boxes(
             x.clone(),
             counts,
-            widths,
-            &[PlotOption::BorderColor("black")],
+            &[
+                PlotOption::BorderColor(ColorType::Black),
+                PlotOption::BoxWidth(widths),
+            ],
         )
         .lines(sample_points, pdf_samples, &[PlotOption::LineWidth(2.0)])
     }
@@ -153,7 +155,7 @@ impl Axes2DExt for Axes2D {
             .into_iter()
             .map(|s| s * 0.7 * max_count / median_pdf);
 
-        let widths = std::iter::repeat(bin_width);
+        let widths = std::iter::repeat_n(bin_width, bin_centers.len()).collect();
 
         self.set_y_range(AutoOption::Fix(0.0), AutoOption::Fix(max_count + 0.4));
         self.set_x_range(
@@ -161,11 +163,13 @@ impl Axes2DExt for Axes2D {
             AutoOption::Fix(max + 0.1 * stats.stddev()),
         );
         self.set_y_label("Count", &[]);
-        self.boxes_set_width(
+        self.boxes(
             bin_centers,
             counts,
-            widths,
-            &[PlotOption::BorderColor("black")],
+            &[
+                PlotOption::BorderColor(ColorType::Black),
+                PlotOption::BoxWidth(widths),
+            ],
         )
         .lines(sample_points, pdf_samples, &[PlotOption::LineWidth(2.0)])
     }
