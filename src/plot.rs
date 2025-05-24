@@ -77,7 +77,7 @@ impl Axes2DExt for Axes2D {
             x.clone(),
             counts,
             &[
-                PlotOption::BorderColor(ColorType::Black),
+                PlotOption::BorderColor(ColorType::RGBString("black")),
                 PlotOption::BoxWidth(widths),
             ],
         )
@@ -167,7 +167,7 @@ impl Axes2DExt for Axes2D {
             bin_centers,
             counts,
             &[
-                PlotOption::BorderColor(ColorType::Black),
+                PlotOption::BorderColor(ColorType::RGBString("black")),
                 PlotOption::BoxWidth(widths),
             ],
         )
