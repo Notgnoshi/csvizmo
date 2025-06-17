@@ -58,27 +58,220 @@ use crate::can::{CanFrame, CanMessage, Session};
 ///   * Timeout
 ///   * RTS during an existing session
 #[derive(Default)]
-pub struct Iso11783TransportProtocolSession {}
+pub struct Iso11783TransportProtocolSession {
+    /// The CanMessage being reconstructed from each of the CanFrames
+    msg: Option<CanMessage>,
+}
 
-// TODO: Impl Debug for these newtypes?
-// TODO: Impl for parsing fields from each of these newtypes
 #[repr(transparent)]
 struct TpDt(CanFrame);
+
+impl TpDt {
+    #[inline]
+    #[must_use]
+    fn seq_id(&self) -> u8 {
+        self.0.data()[0]
+    }
+
+    #[inline]
+    #[must_use]
+    fn data(&self) -> &[u8] {
+        &self.0.data()[1..]
+    }
+}
 
 #[repr(transparent)]
 struct TpCmRts(CanFrame);
 
+impl TpCmRts {
+    #[inline]
+    #[must_use]
+    fn total_message_bytes(&self) -> u16 {
+        let low_byte = self.0.data()[1] as u16;
+        let high_byte = (self.0.data()[2] as u16) << 8;
+
+        let result = high_byte | low_byte;
+        debug_assert!(result > 8);
+        debug_assert!(result < 1786);
+        result
+    }
+
+    #[inline]
+    #[must_use]
+    fn total_message_packets(&self) -> u8 {
+        self.0.data()[3]
+    }
+
+    /// Maximum number of packets the sender is willing to send together in a burst
+    ///
+    /// `0xFF` indicates the sender has no limit.
+    #[inline]
+    #[must_use]
+    fn max_number_packets(&self) -> u8 {
+        self.0.data()[4]
+    }
+
+    /// The PGN of the message being sent
+    #[inline]
+    #[must_use]
+    fn message_pgn(&self) -> u32 {
+        let low_byte = self.0.data()[5] as u32;
+        let mid_byte = (self.0.data()[6] as u32) << 8;
+        let high_byte = (self.0.data()[7] as u32) << 16;
+
+        high_byte | mid_byte | low_byte
+    }
+}
+
 #[repr(transparent)]
 struct TpCmCts(CanFrame);
+
+impl TpCmCts {
+    /// Number of packets the receiver is allowing the sender to send in one burst
+    #[inline]
+    #[must_use]
+    fn number_of_packets(&self) -> u8 {
+        // must not be larger than the TpCmRts.total_message_packets or TpCmRts.max_number_packets
+        self.0.data()[1]
+    }
+
+    /// The next packet number the receiver is expecting
+    #[inline]
+    #[must_use]
+    fn next_packet(&self) -> u8 {
+        self.0.data()[2]
+    }
+
+    /// The PGN of the message being received
+    #[inline]
+    #[must_use]
+    fn message_pgn(&self) -> u32 {
+        let low_byte = self.0.data()[5] as u32;
+        let mid_byte = (self.0.data()[6] as u32) << 8;
+        let high_byte = (self.0.data()[7] as u32) << 16;
+
+        high_byte | mid_byte | low_byte
+    }
+}
 
 #[repr(transparent)]
 struct TpCmEndOfMsgAck(CanFrame);
 
+impl TpCmEndOfMsgAck {
+    #[inline]
+    #[must_use]
+    fn total_message_bytes(&self) -> u16 {
+        let low_byte = self.0.data()[1] as u16;
+        let high_byte = (self.0.data()[2] as u16) << 8;
+
+        let result = high_byte | low_byte;
+        debug_assert!(result > 8);
+        debug_assert!(result < 1786);
+        result
+    }
+
+    #[inline]
+    #[must_use]
+    fn total_message_packets(&self) -> u8 {
+        self.0.data()[3]
+    }
+
+    /// The PGN of the message being acknowledged
+    #[inline]
+    #[must_use]
+    fn message_pgn(&self) -> u32 {
+        let low_byte = self.0.data()[5] as u32;
+        let mid_byte = (self.0.data()[6] as u32) << 8;
+        let high_byte = (self.0.data()[7] as u32) << 16;
+
+        high_byte | mid_byte | low_byte
+    }
+}
+
 #[repr(transparent)]
 struct TpCmConnAbort(CanFrame);
 
+#[repr(u8)]
+#[derive(Debug, PartialEq, Eq)]
+enum AbortReason {
+    Reserved,
+    ExistingTransportSession = 1,
+    SystemResources = 2,
+    Timeout = 3,
+    CtsDuringDt = 4,
+    MaxRetryLimit = 5,
+    UnexpectedDt = 6,
+    BadSequenceNumber = 7,
+    DuplicateSequenceNumber = 8,
+    MessageTooLarge = 9,
+    UnknownReason = 250,
+    // TODO: 251-255 are supposed to be defined by ISO 11783-7, but I can't find them...
+}
+
+impl TpCmConnAbort {
+    #[inline]
+    #[must_use]
+    fn abort_reason(&self) -> AbortReason {
+        match self.0.data()[1] {
+            0 | 10..=249 => AbortReason::Reserved,
+            1 => AbortReason::ExistingTransportSession,
+            2 => AbortReason::SystemResources,
+            3 => AbortReason::Timeout,
+            4 => AbortReason::CtsDuringDt,
+            5 => AbortReason::MaxRetryLimit,
+            6 => AbortReason::UnexpectedDt,
+            7 => AbortReason::BadSequenceNumber,
+            8 => AbortReason::DuplicateSequenceNumber,
+            9 => AbortReason::MessageTooLarge,
+            250..=255 => AbortReason::UnknownReason,
+        }
+    }
+
+    /// The PGN of the message being aborted
+    #[inline]
+    #[must_use]
+    fn message_pgn(&self) -> u32 {
+        let low_byte = self.0.data()[5] as u32;
+        let mid_byte = (self.0.data()[6] as u32) << 8;
+        let high_byte = (self.0.data()[7] as u32) << 16;
+
+        high_byte | mid_byte | low_byte
+    }
+}
+
 #[repr(transparent)]
 struct TpCmBam(CanFrame);
+
+impl TpCmBam {
+    #[inline]
+    #[must_use]
+    fn total_message_bytes(&self) -> u16 {
+        let low_byte = self.0.data()[1] as u16;
+        let high_byte = (self.0.data()[2] as u16) << 8;
+
+        let result = high_byte | low_byte;
+        debug_assert!(result > 8);
+        debug_assert!(result < 1786);
+        result
+    }
+
+    #[inline]
+    #[must_use]
+    fn total_message_packets(&self) -> u8 {
+        self.0.data()[3]
+    }
+
+    /// The PGN of the message being broadcast
+    #[inline]
+    #[must_use]
+    fn message_pgn(&self) -> u32 {
+        let low_byte = self.0.data()[5] as u32;
+        let mid_byte = (self.0.data()[6] as u32) << 8;
+        let high_byte = (self.0.data()[7] as u32) << 16;
+
+        high_byte | mid_byte | low_byte
+    }
+}
 
 impl Session for Iso11783TransportProtocolSession {
     fn accepts_frame(frame: &CanFrame) -> bool {
@@ -92,7 +285,7 @@ impl Session for Iso11783TransportProtocolSession {
             self.handle_data_transfer(TpDt(frame))
         } else {
             unreachable!(
-                "ISO 11783-3 Transport Protocol only uses 0xEC00 and 0xEB00 pgns. Got {:#x}",
+                "ISO 11783-3 Transport Protocol only uses 0xEC00 and 0xEB00 pgns. Got {:#X}",
                 frame.pgn()
             );
         }
@@ -118,23 +311,48 @@ impl Iso11783TransportProtocolSession {
             0x13 => self.handle_end_of_message(TpCmEndOfMsgAck(frame)),
             0x20 => self.handle_broadcast_announce(TpCmBam(frame)),
             0xFF => self.handle_connection_abort(TpCmConnAbort(frame)),
-            _ => unreachable!("TP.CM Control byte {control_byte:#x} is reserved"),
+            _ => unreachable!("TP.CM Control byte {control_byte:#X} is reserved"),
         }
     }
 
     fn handle_data_transfer(&mut self, frame: TpDt) -> eyre::Result<Option<CanMessage>> {
+        tracing::trace!(
+            "TP.DT {:#X} -> {:#X} seq {:#X}", // TODO: Log number of DT packets
+            frame.0.src(),
+            frame.0.dst(),
+            frame.seq_id()
+        );
         Ok(None)
     }
 
     fn handle_request_to_send(&mut self, frame: TpCmRts) -> eyre::Result<Option<CanMessage>> {
+        tracing::debug!(
+            "TP.CM_RTS {:#X} -> {:#X} pgn {:#X}",
+            frame.0.src(),
+            frame.0.dst(),
+            frame.message_pgn()
+        );
         Ok(None)
     }
 
     fn handle_broadcast_announce(&mut self, frame: TpCmBam) -> eyre::Result<Option<CanMessage>> {
+        tracing::debug!(
+            "TP.CM_BAM from {:#X} pgn {:#X}",
+            frame.0.src(),
+            frame.message_pgn()
+        );
         Ok(None)
     }
 
     fn handle_clear_to_send(&mut self, frame: TpCmCts) -> eyre::Result<Option<CanMessage>> {
+        tracing::trace!(
+            "TP.CM_CTS {:#X} <- {:#X} packets {} next {:#X} pgn {:#X}",
+            frame.0.dst(),
+            frame.0.src(),
+            frame.number_of_packets(),
+            frame.next_packet(),
+            frame.message_pgn()
+        );
         Ok(None)
     }
 
@@ -142,6 +360,13 @@ impl Iso11783TransportProtocolSession {
         &mut self,
         frame: TpCmEndOfMsgAck,
     ) -> eyre::Result<Option<CanMessage>> {
+        tracing::trace!(
+            "TP.CM_ACK {:#X} <- {:#X} bytes {} pgn {:#X}",
+            frame.0.dst(),
+            frame.0.src(),
+            frame.total_message_bytes(),
+            frame.message_pgn()
+        );
         Ok(None)
     }
 
@@ -149,6 +374,204 @@ impl Iso11783TransportProtocolSession {
         &mut self,
         frame: TpCmConnAbort,
     ) -> eyre::Result<Option<CanMessage>> {
+        tracing::warn!(
+            "TP.CM_ABRT {:#X} <- {:#X} reason {:?} pgn {:#X}",
+            frame.0.dst(),
+            frame.0.src(),
+            frame.abort_reason(),
+            frame.message_pgn()
+        );
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::can::{CandumpFormat, parse_candump};
+
+    fn fixture_one_big_dt_chunk() -> impl Iterator<Item = CanFrame> {
+        // TP.CM_CTS said "screw it, send everything"
+        let candump = "\
+            (1661789611.150752) can1 18EC1C2A#10900015FF00EF00 T \n\
+                                                                 \n\
+            (1661789611.153173) can1 1CEC2A1C#111501FFFF00EF00 R \n\
+                                                                 \n\
+            (1661789611.154815) can1 1CEB1C2A#0100112233445566 T \n\
+            (1661789611.154824) can1 1CEB1C2A#02778899AABBCCDD T \n\
+            (1661789611.154831) can1 1CEB1C2A#0300112233445566 T \n\
+            (1661789611.154837) can1 1CEB1C2A#04778899AABBCCDD T \n\
+            (1661789611.154844) can1 1CEB1C2A#0500112233445566 T \n\
+            (1661789611.154851) can1 1CEB1C2A#06778899AABBCCDD T \n\
+            (1661789611.154857) can1 1CEB1C2A#0700112233445566 T \n\
+            (1661789611.154864) can1 1CEB1C2A#08778899AABBCCDD T \n\
+            (1661789611.154871) can1 1CEB1C2A#0900112233445566 T \n\
+            (1661789611.154878) can1 1CEB1C2A#0A778899AABBCCDD T \n\
+            (1661789611.158875) can1 1CEB1C2A#0B00112233445566 T \n\
+            (1661789611.158910) can1 1CEB1C2A#0C778899AABBCCDD T \n\
+            (1661789611.158918) can1 1CEB1C2A#0D00112233445566 T \n\
+            (1661789611.158927) can1 1CEB1C2A#0E778899AABBCCDD T \n\
+            (1661789611.158936) can1 1CEB1C2A#0F00112233445566 T \n\
+            (1661789611.158945) can1 1CEB1C2A#10778899AABBCCDD T \n\
+            (1661789611.158961) can1 1CEB1C2A#1100112233445566 T \n\
+            (1661789611.158969) can1 1CEB1C2A#12778899AABBCCDD T \n\
+            (1661789611.158979) can1 1CEB1C2A#1300112233445566 T \n\
+            (1661789611.158988) can1 1CEB1C2A#14778899AABBCCDD T \n\
+            (1661789611.162934) can1 1CEB1C2A#1500112233FFFFFF T \n\
+                                                                 \n\
+            (1661789611.163251) can1 1CEC2A1C#13900015FF00EF00 R \n\
+        ";
+        parse_candump(candump)
+    }
+
+    fn fixture_multi_chunk() -> impl Iterator<Item = CanFrame> {
+        let candump = "\
+            (1665781494.217819) can1 18EC1C2A#10D8001FFF00EF00 \n\
+                                                               \n\
+            (1665781494.218976) can1 1CEC2A1C#110A01FFFF00EF00 \n\
+                                                               \n\
+            (1665781494.221950) can1 1CEB1C2A#0100112233445566 \n\
+            (1665781494.222717) can1 1CEB1C2A#02778899AABBCCDD \n\
+            (1665781494.223480) can1 1CEB1C2A#0300112233445566 \n\
+            (1665781494.224304) can1 1CEB1C2A#04778899AABBCCDD \n\
+            (1665781494.225153) can1 1CEB1C2A#0500112233445566 \n\
+            (1665781494.226204) can1 1CEB1C2A#06778899AABBCCDD \n\
+            (1665781494.227086) can1 1CEB1C2A#0700112233445566 \n\
+            (1665781494.227949) can1 1CEB1C2A#08778899AABBCCDD \n\
+            (1665781494.228994) can1 1CEB1C2A#0900112233445566 \n\
+            (1665781494.229870) can1 1CEB1C2A#0A778899AABBCCDD \n\
+                                                               \n\
+            (1665781494.230484) can1 1CEC2A1C#110A0BFFFF00EF00 \n\
+                                                               \n\
+            (1665781494.234862) can1 1CEB1C2A#0B00112233445566 \n\
+            (1665781494.235476) can1 1CEB1C2A#0C778899AABBCCDD \n\
+            (1665781494.236538) can1 1CEB1C2A#0D00112233445566 \n\
+            (1665781494.238741) can1 1CEB1C2A#0E778899AABBCCDD \n\
+            (1665781494.239316) can1 1CEB1C2A#0F00112233445566 \n\
+            (1665781494.240408) can1 1CEB1C2A#10778899AABBCCDD \n\
+            (1665781494.240980) can1 1CEB1C2A#1100112233445566 \n\
+            (1665781494.241552) can1 1CEB1C2A#12778899AABBCCDD \n\
+            (1665781494.242674) can1 1CEB1C2A#1300112233445566 \n\
+            (1665781494.243240) can1 1CEB1C2A#14778899AABBCCDD \n\
+                                                               \n\
+            (1665781494.244029) can1 1CEC2A1C#110A15FFFF00EF00 \n\
+                                                               \n\
+            (1665781494.247187) can1 1CEB1C2A#1500112233445566 \n\
+            (1665781494.248155) can1 1CEB1C2A#16778899AABBCCDD \n\
+            (1665781494.249013) can1 1CEB1C2A#1700112233445566 \n\
+            (1665781494.250673) can1 1CEB1C2A#18778899AABBCCDD \n\
+            (1665781494.251239) can1 1CEB1C2A#1900112233445566 \n\
+            (1665781494.251810) can1 1CEB1C2A#1A778899AABBCCDD \n\
+            (1665781494.252991) can1 1CEB1C2A#1B00112233445566 \n\
+            (1665781494.253581) can1 1CEB1C2A#1C778899AABBCCDD \n\
+            (1665781494.254156) can1 1CEB1C2A#1D00112233445566 \n\
+            (1665781494.255261) can1 1CEB1C2A#1E778899AABBCCDD \n\
+                                                               \n\
+            (1665781494.256969) can1 1CEC2A1C#110A1FFFFF00EF00 \n\
+                                                               \n\
+            (1665781494.259475) can1 1CEB1C2A#1F00112233445566 \n\
+                                                               \n\
+            (1665781494.261703) can1 1CEC2A1C#13D8001FFF00EF00 \n\
+        ";
+        parse_candump(candump)
+    }
+
+    fn fixture_bam_dm1() -> impl Iterator<Item = CanFrame> {
+        let candump = "\
+            (1666812359.079961) can1 18ECFF1C#200E0002FFCAFE00 \n\
+            (1666812359.131833) can1 14EBFF1C#0100FF7B1402030A \n\
+            (1666812359.183336) can1 14EBFF1C#02FFF3020AF8F702 \n\
+        ";
+        parse_candump(candump)
+    }
+
+    #[test]
+    fn test_parse_tp_dt() {
+        let msg = "(1665782108.888314) can1 1CEB1C2A#021E1A8024052C69";
+        let frame = CandumpFormat::CanUtilsFile.parse(msg).unwrap();
+        let frame = TpDt(frame);
+
+        assert_eq!(frame.seq_id(), 2);
+        assert_eq!(frame.data()[0], 0x1E);
+        assert_eq!(frame.data()[6], 0x69);
+    }
+
+    #[test]
+    fn test_parse_tp_cm_rts() {
+        let msg = "(1665782108.883474) can1 18EC1C2A#104D0130FF00EF01";
+        let frame = CandumpFormat::CanUtilsFile.parse(msg).unwrap();
+        let frame = TpCmRts(frame);
+
+        assert_eq!(frame.total_message_bytes(), 0x014D);
+        assert_eq!(frame.total_message_packets(), 0x30);
+        assert_eq!(frame.max_number_packets(), 0xFF);
+        assert_eq!(frame.message_pgn(), 0x1EF00);
+    }
+
+    #[test]
+    fn test_parse_tp_cm_bam() {
+        let msg = "(1666812359.079961) can1 18ECFF1C#200E0002FFCAFE00";
+        let frame = CandumpFormat::CanUtilsFile.parse(msg).unwrap();
+        let frame = TpCmBam(frame);
+
+        assert_eq!(frame.total_message_bytes(), 0x0E);
+        assert_eq!(frame.total_message_packets(), 0x02);
+        assert_eq!(frame.message_pgn(), 0xFECA);
+    }
+
+    #[test]
+    fn test_parse_tp_cm_cts() {
+        let msg = "(1665782108.884614) can1 1CEC2A1C#110A01FFFF00EF01";
+        let frame = CandumpFormat::CanUtilsFile.parse(msg).unwrap();
+        let frame = TpCmCts(frame);
+
+        assert_eq!(frame.number_of_packets(), 0x0A);
+        assert_eq!(frame.next_packet(), 0x01);
+        assert_eq!(frame.message_pgn(), 0x1EF00);
+    }
+
+    #[test]
+    fn test_parse_tp_cm_ack() {
+        let msg = "(1665782108.946324) can1 1CEC2A1C#134D0130FF00EF01";
+        let frame = CandumpFormat::CanUtilsFile.parse(msg).unwrap();
+        let frame = TpCmEndOfMsgAck(frame);
+
+        assert_eq!(frame.total_message_bytes(), 0x014D);
+        assert_eq!(frame.total_message_packets(), 0x30);
+        assert_eq!(frame.message_pgn(), 0x1EF00);
+    }
+
+    #[test]
+    fn test_parse_tp_cm_abort() {
+        let msg = "(1665782108.946324) can1 1CEC2A1C#FF03FFFFFF00EF01";
+        let frame = CandumpFormat::CanUtilsFile.parse(msg).unwrap();
+        let frame = TpCmConnAbort(frame);
+
+        assert_eq!(frame.abort_reason(), AbortReason::Timeout);
+        assert_eq!(frame.message_pgn(), 0x1EF00);
+    }
+
+    #[test]
+    fn test_bam_dm1() {
+        let mut session = Iso11783TransportProtocolSession::new();
+        for frame in fixture_bam_dm1() {
+            session.handle_frame(frame).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_one_big_dt_chunk() {
+        let mut session = Iso11783TransportProtocolSession::new();
+        for frame in fixture_one_big_dt_chunk() {
+            session.handle_frame(frame).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_multi_chunk() {
+        let mut session = Iso11783TransportProtocolSession::new();
+        for frame in fixture_multi_chunk() {
+            session.handle_frame(frame).unwrap();
+        }
     }
 }
