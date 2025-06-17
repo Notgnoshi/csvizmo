@@ -5,6 +5,11 @@ use eyre::WrapErr;
 
 use crate::can::CanFrame;
 
+/// Parse the given candump, skipping over any parse errors
+pub fn parse_candump(candump: &str) -> impl Iterator<Item = CanFrame> {
+    CandumpParser::new(candump.as_bytes()).filter_map(|r| r.ok())
+}
+
 /// File format of the candump
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CandumpFormat {
