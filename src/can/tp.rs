@@ -59,3 +59,96 @@ use crate::can::{CanFrame, CanMessage, Session};
 ///   * RTS during an existing session
 #[derive(Default)]
 pub struct Iso11783TransportProtocolSession {}
+
+// TODO: Impl Debug for these newtypes?
+// TODO: Impl for parsing fields from each of these newtypes
+#[repr(transparent)]
+struct TpDt(CanFrame);
+
+#[repr(transparent)]
+struct TpCmRts(CanFrame);
+
+#[repr(transparent)]
+struct TpCmCts(CanFrame);
+
+#[repr(transparent)]
+struct TpCmEndOfMsgAck(CanFrame);
+
+#[repr(transparent)]
+struct TpCmConnAbort(CanFrame);
+
+#[repr(transparent)]
+struct TpCmBam(CanFrame);
+
+impl Session for Iso11783TransportProtocolSession {
+    fn accepts_frame(frame: &CanFrame) -> bool {
+        frame.pgn() == 0xEB00 || frame.pgn() == 0xEC00
+    }
+
+    fn handle_frame(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>> {
+        if frame.pgn() == 0xEC00 {
+            self.handle_control_message(frame)
+        } else if frame.pgn() == 0xEB00 {
+            self.handle_data_transfer(TpDt(frame))
+        } else {
+            unreachable!(
+                "ISO 11783-3 Transport Protocol only uses 0xEC00 and 0xEB00 pgns. Got {:#x}",
+                frame.pgn()
+            );
+        }
+    }
+}
+
+/// Public API
+impl Iso11783TransportProtocolSession {
+    /// Create a new TP Session reconstruction object
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Private implementation
+impl Iso11783TransportProtocolSession {
+    fn handle_control_message(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>> {
+        debug_assert!(frame.dlc == 8, "TP.CM messages must be 8 bytes");
+        let control_byte = frame.data()[0];
+        match control_byte {
+            0x10 => self.handle_request_to_send(TpCmRts(frame)),
+            0x11 => self.handle_clear_to_send(TpCmCts(frame)),
+            0x13 => self.handle_end_of_message(TpCmEndOfMsgAck(frame)),
+            0x20 => self.handle_broadcast_announce(TpCmBam(frame)),
+            0xFF => self.handle_connection_abort(TpCmConnAbort(frame)),
+            _ => unreachable!("TP.CM Control byte {control_byte:#x} is reserved"),
+        }
+    }
+
+    fn handle_data_transfer(&mut self, frame: TpDt) -> eyre::Result<Option<CanMessage>> {
+        Ok(None)
+    }
+
+    fn handle_request_to_send(&mut self, frame: TpCmRts) -> eyre::Result<Option<CanMessage>> {
+        Ok(None)
+    }
+
+    fn handle_broadcast_announce(&mut self, frame: TpCmBam) -> eyre::Result<Option<CanMessage>> {
+        Ok(None)
+    }
+
+    fn handle_clear_to_send(&mut self, frame: TpCmCts) -> eyre::Result<Option<CanMessage>> {
+        Ok(None)
+    }
+
+    fn handle_end_of_message(
+        &mut self,
+        frame: TpCmEndOfMsgAck,
+    ) -> eyre::Result<Option<CanMessage>> {
+        Ok(None)
+    }
+
+    fn handle_connection_abort(
+        &mut self,
+        frame: TpCmConnAbort,
+    ) -> eyre::Result<Option<CanMessage>> {
+        Ok(None)
+    }
+}
