@@ -1,68 +1,5 @@
 use crate::can::{CanFrame, CanMessage, Session};
 
-/// ISO 11783-3 Transport Protocol Session
-///
-/// Transport Protocol is specified in ISO 11783-3:5.10, and Extended Transport Protocol in ISO
-/// 11783-3:5.11. The maximum TP message size is 255 packets of 7 bytes/packet, giving a total of
-/// 1,785 bytes. ETP maximum message size is 2^24-1 packets of 7 bytes/packet, giving a total of
-/// 117,440,505 bytes.
-///
-/// There are two kinds of TP sessions
-///
-/// 1. Broadcast - global broadcasts with no ECU-ECU p2p connection
-///
-///    BAM sessions are initiated by a TP.CM_BAM control flow message, followed by a series of
-///    TP.DT data transfer messages, with no flow control in between.
-///
-/// 2. Point to Point - messages from one ECU to another, with control flow and connection
-///    initiation
-///
-///    Point to point TP sessions are initiated by a TP.CM_RTS request to send, and if
-///    acknowledged, is followed up by series of TP.DT messages in sent in bursts whose size is
-///    defined by the periodic flow control messages from the recipient.
-///
-/// and two kinds of TP PGNS
-///
-/// 1. `0xEB00` - Data Transfer (TP.DT)
-/// 2. `0xEC00` - Connection Management (TP.CM)
-///
-///    There are multiple kinds of TP.CM messages defined by the first byte of the message (the
-///    Control Byte):
-///
-///    1. `0x10` - Request To Send (TP.CM_RTS)
-///    2. `0x11` - Clear To Send (TP.CM_CTS)
-///    3. `0x13` - End of Message Acknowledgement (TP.CM_EndofMsgACK)
-///    4. `0xFF` - Connection Abort (TP.Conn_Abort)
-///    5. `0x20` - Broadcast Announce Message (TP.CM_BAM)
-///
-///    Other control byte values are reserved.
-///
-/// # Which ISO-TP?
-///
-/// There are two distinct Transport Protocols in the ISO CAN world. There's the ISO TP and ETP
-/// defined by ISO 11783-3, and there's the "ISO-TP" defined by ISO 15765-2. The two are close
-/// enough to be easily confused.
-///
-/// Awkwardly, it's the ISO 15765-2 ISO-TP that the Linux kernel supports, which leads to confusion
-/// in the Precision Ag world, where it's the ISO 11783-3 TP and ETP that matter.
-///
-/// # TODO
-///
-/// * Conn_Aborts should be logged
-/// * Find a nice way of handling BAM; either handle it separately, or find an elegant way to mix,
-///   but don't fill in a ton of special cases
-/// * Write tests around
-///   * BAM
-///   * Nominal DT
-///   * Conn_Abort
-///   * Timeout
-///   * RTS during an existing session
-#[derive(Default)]
-pub struct Iso11783TransportProtocolSession {
-    /// The CanMessage being reconstructed from each of the CanFrames
-    msg: Option<CanMessage>,
-}
-
 #[repr(transparent)]
 struct TpDt(CanFrame);
 
@@ -107,6 +44,7 @@ impl TpCmRts {
     /// `0xFF` indicates the sender has no limit.
     #[inline]
     #[must_use]
+    #[allow(unused)]
     fn max_number_packets(&self) -> u8 {
         self.0.data()[4]
     }
@@ -160,6 +98,7 @@ struct TpCmEndOfMsgAck(CanFrame);
 impl TpCmEndOfMsgAck {
     #[inline]
     #[must_use]
+    #[allow(unused)]
     fn total_message_bytes(&self) -> u16 {
         let low_byte = self.0.data()[1] as u16;
         let high_byte = (self.0.data()[2] as u16) << 8;
@@ -172,6 +111,7 @@ impl TpCmEndOfMsgAck {
 
     #[inline]
     #[must_use]
+    #[allow(unused)]
     fn total_message_packets(&self) -> u8 {
         self.0.data()[3]
     }
@@ -273,6 +213,72 @@ impl TpCmBam {
     }
 }
 
+/// ISO 11783-3 Transport Protocol Session
+///
+/// Transport Protocol is specified in ISO 11783-3:5.10, and Extended Transport Protocol in ISO
+/// 11783-3:5.11. The maximum TP message size is 255 packets of 7 bytes/packet, giving a total of
+/// 1,785 bytes. ETP maximum message size is 2^24-1 packets of 7 bytes/packet, giving a total of
+/// 117,440,505 bytes.
+///
+/// There are two kinds of TP sessions
+///
+/// 1. Broadcast - global broadcasts with no ECU-ECU p2p connection
+///
+///    BAM sessions are initiated by a TP.CM_BAM control flow message, followed by a series of
+///    TP.DT data transfer messages, with no flow control in between.
+///
+/// 2. Point to Point - messages from one ECU to another, with control flow and connection
+///    initiation
+///
+///    Point to point TP sessions are initiated by a TP.CM_RTS request to send, and if
+///    acknowledged, is followed up by series of TP.DT messages in sent in bursts whose size is
+///    defined by the periodic flow control messages from the recipient.
+///
+/// and two kinds of TP PGNS
+///
+/// 1. `0xEB00` - Data Transfer (TP.DT)
+/// 2. `0xEC00` - Connection Management (TP.CM)
+///
+///    There are multiple kinds of TP.CM messages defined by the first byte of the message (the
+///    Control Byte):
+///
+///    1. `0x10` - Request To Send (TP.CM_RTS)
+///    2. `0x11` - Clear To Send (TP.CM_CTS)
+///    3. `0x13` - End of Message Acknowledgement (TP.CM_EndofMsgACK)
+///    4. `0xFF` - Connection Abort (TP.Conn_Abort)
+///    5. `0x20` - Broadcast Announce Message (TP.CM_BAM)
+///
+///    Other control byte values are reserved.
+///
+/// # Which ISO-TP?
+///
+/// There are two distinct Transport Protocols in the ISO CAN world. There's the ISO TP and ETP
+/// defined by ISO 11783-3, and there's the "ISO-TP" defined by ISO 15765-2. The two are close
+/// enough to be easily confused.
+///
+/// Awkwardly, it's the ISO 15765-2 ISO-TP that the Linux kernel supports, which leads to confusion
+/// in the Precision Ag world, where it's the ISO 11783-3 TP and ETP that matter.
+///
+/// # TODO
+///
+/// * Write tests around
+///   * Conn_Abort
+///   * Timeout
+///   * RTS during an existing session
+#[derive(Default)]
+pub struct Iso11783TransportProtocolSession {
+    /// The CanMessage being reconstructed from each of the CanFrames
+    msg: Option<CanMessage>,
+    /// Does this session need flow control, or is it a BAM session?
+    needs_ack: bool,
+    /// Current number of packets processed in this session
+    current_packets: u8,
+    /// Total number of packets expected to be processed
+    expected_packets: u8,
+    /// Total number of expected bytes. Use msg.data.len() for actual.
+    expected_bytes: usize,
+}
+
 impl Session for Iso11783TransportProtocolSession {
     fn accepts_frame(frame: &CanFrame) -> bool {
         frame.pgn() == 0xEB00 || frame.pgn() == 0xEC00
@@ -316,43 +322,152 @@ impl Iso11783TransportProtocolSession {
     }
 
     fn handle_data_transfer(&mut self, frame: TpDt) -> eyre::Result<Option<CanMessage>> {
+        let Some(msg) = self.msg.as_mut() else {
+            eyre::bail!(
+                "Unexpected TP.DT {:#X} -> {:#X} seq: {:#04X}/{:#04X} before TP.CM_RTS or TP.CM_BAM",
+                frame.0.src(),
+                frame.0.dst(),
+                frame.seq_id(),
+                self.expected_packets,
+            );
+        };
+        self.current_packets += 1;
+        msg.timestamp = frame.0.timestamp;
+
+        // It's common for TP.DT frames to have 0xFF padding to fill out the full 7-bytes of data,
+        // but we don't want to include that 0xFF padding in the reconstructed message.
+        let bytes_so_far = msg.data.len();
+        let bytes_remaining = self.expected_bytes - bytes_so_far;
+        let bytes_remaining = usize::min(bytes_remaining, frame.data().len());
+        msg.data.extend_from_slice(&frame.data()[..bytes_remaining]);
+
         tracing::trace!(
-            "TP.DT {:#X} -> {:#X} seq {:#X}", // TODO: Log number of DT packets
+            "TP.DT     {:#X} -> {:#X} seq: {:#04X}/{:#04X} bytes: {}/{}",
             frame.0.src(),
             frame.0.dst(),
-            frame.seq_id()
+            frame.seq_id(),
+            self.expected_packets,
+            msg.data.len(),
+            self.expected_bytes,
         );
-        Ok(None)
+
+        // If this is a broadcast BAM session, there's no ACK that finishes off the session. So we
+        // have to yield the reconstructed message when we receive the final TP.DT frame.
+        if !self.needs_ack && msg.data.len() == self.expected_bytes {
+            Ok(self.msg.take())
+        } else {
+            Ok(None)
+        }
     }
 
     fn handle_request_to_send(&mut self, frame: TpCmRts) -> eyre::Result<Option<CanMessage>> {
         tracing::debug!(
-            "TP.CM_RTS {:#X} -> {:#X} pgn {:#X}",
+            "TP.CM_RTS {:#X} -> {:#X} packets: {}, bytes: {} pgn: {:#X}",
             frame.0.src(),
             frame.0.dst(),
+            frame.total_message_packets(),
+            frame.total_message_bytes(),
             frame.message_pgn()
         );
+        self.handle_first_frame(
+            true,
+            frame.total_message_bytes() as usize,
+            frame.total_message_packets(),
+            frame.message_pgn(),
+            frame.0,
+        )?;
         Ok(None)
     }
 
     fn handle_broadcast_announce(&mut self, frame: TpCmBam) -> eyre::Result<Option<CanMessage>> {
         tracing::debug!(
-            "TP.CM_BAM from {:#X} pgn {:#X}",
+            "TP.CM_BAM from {:#X} packets: {}, bytes: {} pgn: {:#X}",
             frame.0.src(),
+            frame.total_message_packets(),
+            frame.total_message_bytes(),
             frame.message_pgn()
         );
+        self.handle_first_frame(
+            false,
+            frame.total_message_bytes() as usize,
+            frame.total_message_packets(),
+            frame.message_pgn(),
+            frame.0,
+        )?;
         Ok(None)
     }
 
+    /// Handle both TP.CM_RTS and TP.CM_BAM the same
+    fn handle_first_frame(
+        &mut self,
+        needs_ack: bool,
+        bytes: usize,
+        packets: u8,
+        pgn: u32,
+        frame: CanFrame,
+    ) -> eyre::Result<()> {
+        if self.msg.is_some() {
+            eyre::bail!(
+                "Multiple TP.CM_RTS or TM.CM_BAM frames for the same session: {:#X} -> {:#X} @ {}",
+                frame.dst(),
+                frame.src(),
+                frame.timestamp,
+            );
+        }
+
+        // Build the 29-bit canid as if it were a single-frame CAN message. Use the priority from
+        // the first frame, but I've seen e.g., BAM sessions where the priority differs between the
+        // TP.CM_BAM and TP.DT frames.
+        //
+        // | 3    | 1   | 1  | 8    | 8    | 8   |
+        // | prio | EDP | DP | PDUF | PDUS | SRC |
+        let mut canid = (frame.priority() as u32) << 26;
+        canid |= pgn << 8;
+        if frame.dst() < 0xF0 {
+            canid |= (frame.dst() as u32) << 8;
+        }
+        canid |= frame.src() as u32;
+
+        let msg = CanMessage {
+            src: frame.src(),
+            dst: frame.dst(),
+            priority: frame.priority(),
+            timestamp: frame.timestamp,
+            interface: frame.interface,
+            canid,
+            pgn,
+            dlc: bytes,
+            data: Vec::with_capacity(bytes),
+        };
+        self.msg = Some(msg);
+        self.needs_ack = needs_ack;
+        self.expected_packets = packets;
+        self.expected_bytes = bytes;
+        Ok(())
+    }
+
     fn handle_clear_to_send(&mut self, frame: TpCmCts) -> eyre::Result<Option<CanMessage>> {
-        tracing::trace!(
-            "TP.CM_CTS {:#X} <- {:#X} packets {} next {:#X} pgn {:#X}",
-            frame.0.dst(),
-            frame.0.src(),
-            frame.number_of_packets(),
-            frame.next_packet(),
-            frame.message_pgn()
-        );
+        // For the purpose of a TP parser, all we need is logging and error handling
+        if self.msg.is_some() {
+            tracing::trace!(
+                "TP.CM_CTS {:#X} <- {:#X} seq: {:#04X} window: {} pgn: {:#X}",
+                frame.0.dst(),
+                frame.0.src(),
+                frame.next_packet(),
+                frame.number_of_packets(),
+                frame.message_pgn()
+            );
+        } else {
+            eyre::bail!(
+                "Unexpected TP.CM_CTS {:#X} <- {:#X} seq: {:#04X} window: {} pgn: {:#X} before TP.CM_RTS or TP.CM_BAM",
+                frame.0.dst(),
+                frame.0.src(),
+                frame.next_packet(),
+                frame.number_of_packets(),
+                frame.message_pgn()
+            )
+        }
+
         Ok(None)
     }
 
@@ -360,14 +475,23 @@ impl Iso11783TransportProtocolSession {
         &mut self,
         frame: TpCmEndOfMsgAck,
     ) -> eyre::Result<Option<CanMessage>> {
-        tracing::trace!(
+        let Some(mut msg) = self.msg.take() else {
+            eyre::bail!(
+                "Unexpected TP.CM_ACK {:#X} <- {:#X} pgn {:#X} before TP.CM_RTS or TP.CM_BAM",
+                frame.0.dst(),
+                frame.0.src(),
+                frame.message_pgn()
+            );
+        };
+        tracing::debug!(
             "TP.CM_ACK {:#X} <- {:#X} bytes {} pgn {:#X}",
             frame.0.dst(),
             frame.0.src(),
-            frame.total_message_bytes(),
+            msg.data.len(),
             frame.message_pgn()
         );
-        Ok(None)
+        msg.timestamp = frame.0.timestamp;
+        Ok(Some(msg))
     }
 
     fn handle_connection_abort(
@@ -381,6 +505,7 @@ impl Iso11783TransportProtocolSession {
             frame.abort_reason(),
             frame.message_pgn()
         );
+        *self = Self::default();
         Ok(None)
     }
 }
@@ -393,9 +518,9 @@ mod tests {
     fn fixture_one_big_dt_chunk() -> impl Iterator<Item = CanFrame> {
         // TP.CM_CTS said "screw it, send everything"
         let candump = "\
-            (1661789611.150752) can1 18EC1C2A#10900015FF00EF00 T \n\
+            (1661789611.150752) can1 18EC1C2A#10900015FF00EF01 T \n\
                                                                  \n\
-            (1661789611.153173) can1 1CEC2A1C#111501FFFF00EF00 R \n\
+            (1661789611.153173) can1 1CEC2A1C#111501FFFF00EF01 R \n\
                                                                  \n\
             (1661789611.154815) can1 1CEB1C2A#0100112233445566 T \n\
             (1661789611.154824) can1 1CEB1C2A#02778899AABBCCDD T \n\
@@ -419,7 +544,7 @@ mod tests {
             (1661789611.158988) can1 1CEB1C2A#14778899AABBCCDD T \n\
             (1661789611.162934) can1 1CEB1C2A#1500112233FFFFFF T \n\
                                                                  \n\
-            (1661789611.163251) can1 1CEC2A1C#13900015FF00EF00 R \n\
+            (1661789611.163251) can1 1CEC2A1C#13900015FF00EF01 R \n\
         ";
         parse_candump(candump)
     }
@@ -469,7 +594,7 @@ mod tests {
                                                                \n\
             (1665781494.256969) can1 1CEC2A1C#110A1FFFFF00EF00 \n\
                                                                \n\
-            (1665781494.259475) can1 1CEB1C2A#1F00112233445566 \n\
+            (1665781494.259475) can1 1CEB1C2A#1F001122334455FF \n\
                                                                \n\
             (1665781494.261703) can1 1CEC2A1C#13D8001FFF00EF00 \n\
         ";
@@ -554,24 +679,69 @@ mod tests {
     #[test]
     fn test_bam_dm1() {
         let mut session = Iso11783TransportProtocolSession::new();
+        let mut msg = None;
         for frame in fixture_bam_dm1() {
-            session.handle_frame(frame).unwrap();
+            msg = session.handle_frame(frame).unwrap();
         }
+        let msg = msg.unwrap();
+
+        assert_eq!(msg.timestamp, 1666812359.183336);
+        assert_eq!(msg.interface, "can1");
+        assert_eq!(msg.canid, 0x18FECA1C); // Prop B 0xFECA PGN without DP with priority 6
+        assert_eq!(msg.priority, 6);
+        assert_eq!(msg.pgn, 0xFECA);
+        assert_eq!(msg.src, 0x1C);
+        assert_eq!(msg.dst, 0xFF);
+        assert_eq!(msg.dlc, 14);
+        assert_eq!(msg.data[0], 0x00);
+        assert_eq!(msg.data[6], 0x0A);
+        assert_eq!(msg.data[7], 0xFF);
+        assert_eq!(msg.data[13], 0x02);
     }
 
     #[test]
     fn test_one_big_dt_chunk() {
         let mut session = Iso11783TransportProtocolSession::new();
+        let mut msg = None;
         for frame in fixture_one_big_dt_chunk() {
-            session.handle_frame(frame).unwrap();
+            msg = session.handle_frame(frame).unwrap();
         }
+        let msg = msg.unwrap();
+
+        assert_eq!(msg.timestamp, 1661789611.163251);
+        assert_eq!(msg.interface, "can1");
+        assert_eq!(msg.canid, 0x19EF1C2A); // Prop A2 0x1EF00 PGN with DP bit with priority 6
+        assert_eq!(msg.priority, 6);
+        assert_eq!(msg.pgn, 0x1EF00);
+        assert_eq!(msg.src, 0x2A);
+        assert_eq!(msg.dst, 0x1C);
+        assert_eq!(msg.dlc, 144);
+        assert_eq!(msg.data[0], 0x00);
+        assert_eq!(msg.data[7], 0x77);
+        assert_eq!(msg.data[143 - 7], 0xAA);
+        assert_eq!(msg.data[143], 0x33);
     }
 
     #[test]
     fn test_multi_chunk() {
         let mut session = Iso11783TransportProtocolSession::new();
+        let mut msg = None;
         for frame in fixture_multi_chunk() {
-            session.handle_frame(frame).unwrap();
+            msg = session.handle_frame(frame).unwrap();
         }
+        let msg = msg.unwrap();
+
+        assert_eq!(msg.timestamp, 1665781494.261703);
+        assert_eq!(msg.interface, "can1");
+        assert_eq!(msg.canid, 0x18EF1C2A); // Prop A 0xEF00 PGN without the DP bit with priority 6
+        assert_eq!(msg.priority, 6);
+        assert_eq!(msg.pgn, 0xEF00);
+        assert_eq!(msg.src, 0x2A);
+        assert_eq!(msg.dst, 0x1C);
+        assert_eq!(msg.dlc, 216);
+        assert_eq!(msg.data[0], 0x00);
+        assert_eq!(msg.data[7], 0x77);
+        assert_eq!(msg.data[215 - 7], 0xCC);
+        assert_eq!(msg.data[215], 0x55);
     }
 }
