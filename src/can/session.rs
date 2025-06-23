@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::can::{CanFrame, CanMessage, FastPacketSession};
+use crate::can::{CanFrame, CanMessage, FastPacketSession, Iso11783TransportProtocolSession};
 
 /// A transport layer session
 ///
@@ -58,6 +58,7 @@ pub fn reconstruct_transport_sessions<I: Iterator<Item = CanFrame>>(
         frames,
         identity: IdentitySession,
         fast_packet: HashMap::new(),
+        transport_protocol: HashMap::new(),
     }
 }
 
@@ -66,8 +67,11 @@ pub struct SessionManager<I: Iterator<Item = CanFrame>> {
 
     identity: IdentitySession,
     fast_packet: HashMap<u32, FastPacketSession>,
+    transport_protocol: HashMap<u32, Iso11783TransportProtocolSession>,
 }
 
+// TODO: Build tracing spans for each session that get entered before calling session.handle_frame
+// for each session.
 impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
     type Item = eyre::Result<CanMessage>;
 
@@ -89,6 +93,29 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
                     self.fast_packet.insert(session_id, session);
                     // Spooky recursion to keep handling the next frame until there's any finished
                     // session
+                    return self.next();
+                }
+            }
+        } else if Iso11783TransportProtocolSession::accepts_frame(&frame) {
+            let session_id = Iso11783TransportProtocolSession::session_id(&frame);
+            let mut session = self
+                .transport_protocol
+                .remove(&session_id)
+                .unwrap_or_default();
+
+            match session.handle_frame(frame) {
+                Err(e) => {
+                    // Don't insert the session back into the map
+                    return Some(Err(
+                        e.wrap_err("Failed to handle TP frame; aborting session")
+                    ));
+                }
+                Ok(Some(msg)) => return Some(Ok(msg)),
+                Ok(None) => {
+                    self.transport_protocol.insert(session_id, session);
+                    // Spooky recursion to keep handling the next frame until there's any finished
+                    // session, including identity sessions, which results in not much recursion,
+                    // unless you have malicious data.
                     return self.next();
                 }
             }
