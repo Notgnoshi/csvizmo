@@ -73,6 +73,8 @@ pub struct SessionManager<I: Iterator<Item = CanFrame>> {
 // TODO: Build tracing spans for each session that get entered before calling session.handle_frame
 // for each session.
 impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
+    // TODO: Maybe if this fails to reconstruct a session, still pass the individual frames
+    // through?
     type Item = eyre::Result<CanMessage>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -106,9 +108,7 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
             match session.handle_frame(frame) {
                 Err(e) => {
                     // Don't insert the session back into the map
-                    return Some(Err(
-                        e.wrap_err("Failed to handle TP frame; aborting session")
-                    ));
+                    return Some(Err(e));
                 }
                 Ok(Some(msg)) => return Some(Ok(msg)),
                 Ok(None) => {
