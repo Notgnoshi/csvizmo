@@ -407,13 +407,15 @@ impl Iso11783TransportProtocolSession {
         frame: CanFrame,
     ) -> eyre::Result<()> {
         if self.msg.is_some() {
-            eyre::bail!(
+            tracing::error!(
                 "Multiple TP.CM_RTS or TM.CM_BAM frames for the same session: {:#X} -> {:#X} @ {}",
                 frame.dst(),
                 frame.src(),
                 frame.timestamp,
             );
         }
+        // If this session has already been started, reset it if we get another TP.CM_RTS or TP.CM_BAM
+        *self = Self::new();
 
         // Build the 29-bit canid as if it were a single-frame CAN message. Use the priority from
         // the first frame, but I've seen e.g., BAM sessions where the priority differs between the
