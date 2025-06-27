@@ -280,6 +280,32 @@ pub struct Iso11783TransportProtocolSession {
 }
 
 impl Session for Iso11783TransportProtocolSession {
+    fn session_id(frame: &CanFrame) -> u32 {
+        // Create the session ID with | src | dst | of the session sender -> receiver (not just the
+        // frame src and dst address).
+        let src = frame.src() as u32;
+        let dst = frame.dst() as u32;
+
+        // TP.DT is src -> dst
+        if frame.pgn() == 0xEB00 {
+            (src << 8) | dst
+        } else if frame.pgn() == 0xEC00 {
+            let control_byte = frame.data()[0];
+            match control_byte {
+                // TP.CM_RTS and TP.CM_BAM are src -> dst
+                0x10 | 0x20 => return (src << 8) | dst,
+                // TP.CM_CTS, TP.CM_ABRT, and TP.CM_ACK are dst -> src
+                0x11 | 0x13 | 0xFF => (dst << 8) | src,
+                _ => unreachable!("TP.CM Control byte {control_byte:#X} is reserved"),
+            }
+        } else {
+            unreachable!(
+                "ISO 11783-3 Transport Protocol only uses 0xEC00 and 0xEB00 pgns. Got {:#X}",
+                frame.pgn()
+            );
+        }
+    }
+
     fn accepts_frame(frame: &CanFrame) -> bool {
         frame.pgn() == 0xEB00 || frame.pgn() == 0xEC00
     }
