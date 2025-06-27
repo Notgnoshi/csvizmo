@@ -423,7 +423,8 @@ impl Iso11783TransportProtocolSession {
         // | prio | EDP | DP | PDUF | PDUS | SRC |
         let mut canid = (frame.priority() as u32) << 26;
         canid |= pgn << 8;
-        if frame.dst() < 0xF0 {
+        let pdu_format = (pgn & 0xFF00) >> 8;
+        if pdu_format <= 0xEF {
             canid |= (frame.dst() as u32) << 8;
         }
         canid |= frame.src() as u32;
@@ -743,5 +744,35 @@ mod tests {
         assert_eq!(msg.data[7], 0x77);
         assert_eq!(msg.data[215 - 7], 0xCC);
         assert_eq!(msg.data[215], 0x55);
+    }
+
+    #[test]
+    fn test_canid_reconstruction() {
+        // This is a Prop B PGN sent over a P2P TP session
+        let candump = "\
+            (1750963033.205621) can0 18EC801C#1042000A0A70FF00 \n\
+            (1750963033.207887) can0 1CEC1C80#110A01FFFF70FF00 \n\
+            (1750963033.208943) can0 14EB801C#01111E0000000000 \n\
+            (1750963033.211735) can0 14EB801C#0200000000000000 \n\
+            (1750963033.213493) can0 14EB801C#0300000000000000 \n\
+            (1750963033.214642) can0 14EB801C#0400000000000000 \n\
+            (1750963033.216342) can0 14EB801C#0500000000000000 \n\
+            (1750963033.217422) can0 14EB801C#0600000000000000 \n\
+            (1750963033.219104) can0 14EB801C#0700000000000000 \n\
+            (1750963033.220252) can0 14EB801C#0800000000000000 \n\
+            (1750963033.221376) can0 14EB801C#0900000000000000 \n\
+            (1750963033.222869) can0 14EB801C#0A000000FFFFFFFF \n\
+            (1750963033.223740) can0 1CEC1C80#1342000AFF70FF00 \n\
+        ";
+        let mut msg = None;
+        let mut session = Iso11783TransportProtocolSession::new();
+        for frame in parse_candump(candump) {
+            msg = session.handle_frame(frame).unwrap();
+        }
+        let msg = msg.unwrap();
+
+        assert_eq!(msg.timestamp, 1750963033.22374);
+        assert_eq!(msg.pgn, 0x00FF70);
+        assert_eq!(msg.canid, 0x18FF701C);
     }
 }
