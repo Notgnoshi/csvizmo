@@ -68,12 +68,10 @@ pub struct SessionManager<I: Iterator<Item = CanFrame>> {
     frames: I,
 
     identity: IdentitySession,
-    fast_packet: HashMap<u32, FastPacketSession>,
-    transport_protocol: HashMap<u32, Iso11783TransportProtocolSession>,
+    fast_packet: HashMap<u32, (FastPacketSession, tracing::Span)>,
+    transport_protocol: HashMap<u32, (Iso11783TransportProtocolSession, tracing::Span)>,
 }
 
-// TODO: Build tracing spans for each session that get entered before calling session.handle_frame
-// for each session.
 impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
     // TODO: Maybe if this fails to reconstruct a session, still pass the individual frames
     // through?
@@ -84,8 +82,14 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
 
         if FastPacketSession::accepts_frame(&frame) {
             let session_id = FastPacketSession::session_id(&frame);
-            let mut session = self.fast_packet.remove(&session_id).unwrap_or_default();
+            let (mut session, span) = self.fast_packet.remove(&session_id).unwrap_or_else(|| {
+                (
+                    FastPacketSession::new(),
+                    tracing::debug_span!("FP", src = frame.src(), dst = frame.dst()),
+                )
+            });
 
+            let guard = span.enter();
             match session.handle_frame(frame) {
                 Err(e) => {
                     return Some(Err(
@@ -94,7 +98,8 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
                 }
                 Ok(Some(msg)) => return Some(Ok(msg)),
                 Ok(None) => {
-                    self.fast_packet.insert(session_id, session);
+                    drop(guard);
+                    self.fast_packet.insert(session_id, (session, span));
                     // Spooky recursion to keep handling the next frame until there's any finished
                     // session
                     return self.next();
@@ -102,11 +107,20 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
             }
         } else if Iso11783TransportProtocolSession::accepts_frame(&frame) {
             let session_id = Iso11783TransportProtocolSession::session_id(&frame);
-            let mut session = self
-                .transport_protocol
-                .remove(&session_id)
-                .unwrap_or_default();
+            let (mut session, span) =
+                self.transport_protocol
+                    .remove(&session_id)
+                    .unwrap_or_else(|| {
+                        (
+                            Iso11783TransportProtocolSession::new(),
+                            // Assume that the first frame to cause a session to get created is
+                            // sent from the session sender (that's not actually guaranteed if the
+                            // candump was interrupted, or messages were dropped)
+                            tracing::debug_span!("TP", src = frame.src(), dst = frame.dst()),
+                        )
+                    });
 
+            let guard = span.enter();
             match session.handle_frame(frame) {
                 Err(e) => {
                     // Don't insert the session back into the map
@@ -114,7 +128,8 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
                 }
                 Ok(Some(msg)) => return Some(Ok(msg)),
                 Ok(None) => {
-                    self.transport_protocol.insert(session_id, session);
+                    drop(guard);
+                    self.transport_protocol.insert(session_id, (session, span));
                     // Spooky recursion to keep handling the next frame until there's any finished
                     // session, including identity sessions, which results in not much recursion,
                     // unless you have malicious data.
