@@ -49,7 +49,7 @@ impl CanMessage {
     pub fn write<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         writeln!(
             writer,
-            "({}) {} {}#{}",
+            "({:.6}) {} {}#{}",
             self.timestamp,
             self.interface,
             hex::encode_upper(self.canid.to_be_bytes()),
@@ -62,7 +62,7 @@ impl CanFrame {
     pub fn write<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         writeln!(
             writer,
-            "({}) {} {}#{}",
+            "({:.6}) {} {}#{}",
             self.timestamp,
             self.interface,
             hex::encode_upper(self.canid.to_be_bytes()),
