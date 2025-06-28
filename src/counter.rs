@@ -61,19 +61,19 @@ where
         self.counts.len()
     }
 
-    pub fn iter(&self) -> std::collections::hash_map::Iter<T, u64> {
+    pub fn iter(&self) -> std::collections::hash_map::Iter<'_, T, u64> {
         self.counts.iter()
     }
 
-    pub fn iter_mut(&mut self) -> std::collections::hash_map::IterMut<T, u64> {
+    pub fn iter_mut(&mut self) -> std::collections::hash_map::IterMut<'_, T, u64> {
         self.counts.iter_mut()
     }
 
-    pub fn values(&self) -> std::collections::hash_map::Values<T, u64> {
+    pub fn values(&self) -> std::collections::hash_map::Values<'_, T, u64> {
         self.counts.values()
     }
 
-    pub fn keys(&self) -> std::collections::hash_map::Keys<T, u64> {
+    pub fn keys(&self) -> std::collections::hash_map::Keys<'_, T, u64> {
         self.counts.keys()
     }
 }
