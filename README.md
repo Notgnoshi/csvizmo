@@ -141,3 +141,26 @@ planned.
 
 The [canspam](./scripts/canspam) script can generate random CAN traffic on a Linux CAN device. It's
 useful for inflating busload, or for generating random traffic to test `can2csv` against ;)
+
+## canstruct
+
+The `canstruct` tool is a NMEA 2000 Fast Packet / ISO 11783-3 Transport Protocol transport session
+reconstruction tool. That is, you give it the individual 8-byte frames, and it gives you the
+reconstructed messages.
+
+```sh
+$ cat data/abort-then-full.log
+(1750963033.251412) can0 18EC2A1C#101600040400EF00      // TP.CM_RTS
+(1750963033.270725) can0 18EC1C2A#FF01FFFFFF00EF00      // TP.Conn_Abort
+(1750963079.757877) can0 18EC2A1C#101600040400EF00      // TP.CM_RTS
+(1750963079.775206) can0 18EC1C2A#110401FFFF00EF00      // TP.CM_CTS
+(1750963079.778342) can0 14EB2A1C#0111111111111111      // TP.DT
+(1750963079.779468) can0 14EB2A1C#0222222222222222      // TP.DT
+(1750963079.780613) can0 14EB2A1C#0333333333333333      // TP.DT
+(1750963079.781778) can0 14EB2A1C#0444FFFFFFFFFFFF      // TP.DT
+(1750963079.795905) can0 18EC1C2A#13160004FF00EF00      // TP.CM_EndofMsgACK
+
+$ canstruct data/abort-then-full.log
+2025-06-28T15:36:19.051620Z  WARN csvizmo::can::tp: TP.CM_ABRT 0x1C <- 0x2A reason ExistingTransportSession pgn 0xEF00
+(1750963079.795905) can0 18EF2A1C#11111111111111222222222222223333333333333344
+```
