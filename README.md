@@ -98,6 +98,23 @@ src,seq_id,longitude_deg,latitude_deg,altitude_m,sog_mps,cog_deg_cwfn,cog_ref,me
 ...
 ```
 
+> [!IMPORTANT]
+> If you want to use `can2k` together with `qgsdir`, you need to use `can2k --wkt`.
+
+## qgsdir
+
+Generate a QGIS project from a directory of CSV layer files. Each CSV file is assumed to have a
+column of WKT geometries named `geometry` (QGIS's geometry heuristics don't appear to be exposed via
+their Python API).
+
+```sh
+$ can2k --wkt ./data/n2k-sample.log ./data/n2k.csv
+$ qgsdir --open ./data/n2k.csv
+```
+
+You may pass directories or files. If you pass a directory, the script is able to group layers by
+subdirectory, leading to an easier-to-use layer tree.
+
 ## csvdelta
 
 Calculate the inter-row deltas for a CSV column. Useful for understanding the time between events.
