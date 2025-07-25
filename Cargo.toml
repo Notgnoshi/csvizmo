@@ -1,6 +1,6 @@
 [package]
 name = "csvizmo"
-version = "0.2.0"
+version = "0.3.0"
 autotests = false
 edition = "2024"
 license = "MIT"
