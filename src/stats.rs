@@ -106,7 +106,7 @@ impl std::fmt::Display for OnlineStats {
 }
 
 impl OnlineStats {
-    #[allow(clippy::new_without_default)]
+    #[expect(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             num: 0,

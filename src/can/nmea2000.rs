@@ -24,13 +24,13 @@ pub struct GpsData {
 
 const NMEA_2000_PGNS: [u32; 5] = [0x1F801, 0x1F802, 0x1F803, 0x1F804, 0x1F805];
 
-#[allow(unused)]
 enum N2kMsg {
+    #[expect(unused)]
     PositionRapidUpdate(PositionRapidUpdate), // 0x1F801,
-    CogSogRapidUpdate(CogSogRapidUpdate),     // 0x1F802,
+    CogSogRapidUpdate(CogSogRapidUpdate), // 0x1F802,
     PositionDeltaHighPrecisionRapidUpdate(PositionDeltaHighPrecisionRapidUpdate), // 0x1F803
     AltitudeDeltaHighPrecisionRapidUpdate(AltitudeDeltaHighPrecisionRapidUpdate), // 0x1F804
-    GnssPositionData(GnssPositionData),       // 0x1F805
+    GnssPositionData(GnssPositionData),   // 0x1F805
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
