@@ -44,7 +44,7 @@ impl TpCmRts {
     /// `0xFF` indicates the sender has no limit.
     #[inline]
     #[must_use]
-    #[allow(unused)]
+    #[cfg(test)]
     fn max_number_packets(&self) -> u8 {
         self.0.data()[4]
     }
@@ -98,7 +98,7 @@ struct TpCmEndOfMsgAck(CanFrame);
 impl TpCmEndOfMsgAck {
     #[inline]
     #[must_use]
-    #[allow(unused)]
+    #[cfg(test)]
     fn total_message_bytes(&self) -> u16 {
         let low_byte = self.0.data()[1] as u16;
         let high_byte = (self.0.data()[2] as u16) << 8;
@@ -111,7 +111,7 @@ impl TpCmEndOfMsgAck {
 
     #[inline]
     #[must_use]
-    #[allow(unused)]
+    #[cfg(test)]
     fn total_message_packets(&self) -> u8 {
         self.0.data()[3]
     }

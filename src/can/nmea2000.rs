@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use byteorder::{ByteOrder, LittleEndian};
+use serde::ser::SerializeStruct;
 
 use crate::can::CanMessage;
 
@@ -22,15 +23,60 @@ pub struct GpsData {
     pub msg: &'static str,
 }
 
+#[repr(transparent)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct GpsDataWkt(pub GpsData);
+
+// NOTE: I tried to do
+//
+//     #[derive(serde::Serialize)]
+//     pub struct GpsDataWkt {
+//         pub geometry: String,
+//         #[serde(flatten)]
+//         pub data: GpsData,
+//     }
+//
+// But the csv Writer complained that it couldn't serialize a map. So manually implement Serialize
+// and move on.
+impl serde::Serialize for GpsDataWkt {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("GpsData", 14)?; // 13 + geometry
+        state.serialize_field("src", &self.0.src)?;
+        state.serialize_field("seq_id", &self.0.seq_id)?;
+        state.serialize_field(
+            "geometry",
+            &format!(
+                "POINT Z ({} {} {})",
+                self.0.longitude_deg, self.0.latitude_deg, self.0.altitude_m
+            ),
+        )?;
+        state.serialize_field("longitude_deg", &self.0.longitude_deg)?;
+        state.serialize_field("latitude_deg", &self.0.latitude_deg)?;
+        state.serialize_field("altitude_m", &self.0.altitude_m)?;
+        state.serialize_field("sog_mps", &self.0.sog_mps)?;
+        state.serialize_field("cog_deg_cwfn", &self.0.cog_deg_cwfn)?;
+        state.serialize_field("cog_ref", &self.0.cog_ref)?;
+        state.serialize_field("method", &self.0.method)?;
+        state.serialize_field("msg_timestamp", &self.0.msg_timestamp)?;
+        state.serialize_field("gps_timestamp", &self.0.gps_timestamp)?;
+        state.serialize_field("gps_age", &self.0.gps_age)?;
+        state.serialize_field("msg", &self.0.msg)?;
+        state.end()
+    }
+}
+
 const NMEA_2000_PGNS: [u32; 5] = [0x1F801, 0x1F802, 0x1F803, 0x1F804, 0x1F805];
 
-#[allow(unused)]
 enum N2kMsg {
+    #[expect(unused)]
     PositionRapidUpdate(PositionRapidUpdate), // 0x1F801,
-    CogSogRapidUpdate(CogSogRapidUpdate),     // 0x1F802,
+    CogSogRapidUpdate(CogSogRapidUpdate), // 0x1F802,
     PositionDeltaHighPrecisionRapidUpdate(PositionDeltaHighPrecisionRapidUpdate), // 0x1F803
     AltitudeDeltaHighPrecisionRapidUpdate(AltitudeDeltaHighPrecisionRapidUpdate), // 0x1F804
-    GnssPositionData(GnssPositionData),       // 0x1F805
+    GnssPositionData(GnssPositionData),   // 0x1F805
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

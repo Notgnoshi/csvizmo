@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use csv::Writer;
-use csvizmo::can::{CandumpParser, parse_n2k_gps, reconstruct_transport_sessions};
+use csvizmo::can::{CandumpParser, GpsDataWkt, parse_n2k_gps, reconstruct_transport_sessions};
 use csvizmo::stdio::{get_input_reader, get_output_writer};
 
 /// Parse NMEA 2000 GPS data out of a candump
@@ -19,6 +19,13 @@ struct Args {
 
     /// Path to the output. stdout if '-' or if not passed
     output: Option<PathBuf>,
+
+    /// Output the GPS location in WKT format
+    ///
+    /// This is necessary to use this script's output with the `qgsdir` script. Slightly more
+    /// performant (less heap allocation + formatting) if not given.
+    #[clap(short, long)]
+    wkt: bool,
 }
 
 fn main() -> eyre::Result<()> {
@@ -59,7 +66,11 @@ fn main() -> eyre::Result<()> {
     });
     let msgs = parse_n2k_gps(msgs);
     for msg in msgs {
-        if let Err(e) = writer.serialize(msg) {
+        if args.wkt {
+            if let Err(e) = writer.serialize(GpsDataWkt(msg)) {
+                tracing::warn!("Failed to serialize msg: {e}");
+            }
+        } else if let Err(e) = writer.serialize(msg) {
             tracing::warn!("Failed to serialize msg: {e}");
         }
     }

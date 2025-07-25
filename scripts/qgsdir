@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Create a QGIS project from a directory of CSV files.
+
+Each CSV file is expected to have a 'geometry' column of WKT geometries.
+"""
+import argparse
+import logging
+import os
+import pathlib
+import subprocess
+import sys
+import time
+from typing import Dict, List, Optional
+
+# Heaven help you if you want to run this on Windows. I'd rather stab out my eye with a rusty spoon.
+import qgis.core
+import qgis.gui
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--log-level",
+        "-l",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging output level. Defaults to INFO.",
+    )
+    group = parser.add_argument_group()
+    group.add_argument(
+        "input",
+        metavar="INPUT",
+        nargs="+",
+        type=pathlib.Path,
+        help="The path(s) to the CSV layer files. May be a nested directory, or individual files.",
+    )
+    group.add_argument(
+        "--output",
+        "-o",
+        type=pathlib.Path,
+        default="./project.qgs",
+        help="Path to generated QGIS project. Defaults to './project.qgs'",
+    )
+    parser.add_argument(
+        "--crs",
+        "-c",
+        default="EPSG:4326",
+        help="Set the project CRS. Defaults to EPSG:4326 (WGS84)",
+    )
+    # NOTE: Grouping only works for directories passed as inputs, rather than individual files
+    # (because it's easier to implement that way)
+    parser.add_argument(
+        "--no-group",
+        "-n",
+        action="store_true",
+        help="Do not group layers by directory",
+    )
+    parser.add_argument(
+        "--open",
+        action="store_true",
+        help="Open QGIS with the generated project",
+    )
+
+    return parser.parse_args()
+
+
+def main(args):
+    qg = qgis.core.QgsApplication([], True)
+    qg.initQgis()
+
+    # Qgis::MessageLevel defined in qgis.h
+    levels = {
+        0: logging.INFO,  # Info
+        1: logging.WARNING,  # Warning
+        2: logging.ERROR,  # Critical
+        3: logging.INFO,  # Success
+        4: logging.INFO,  # NoLevel
+    }
+
+    def qgs_logger(message, tag, level):
+        logging.log(levels[level], "qgis: %s: %s", tag, message)
+
+    qgis.core.QgsApplication.instance().messageLog().messageReceived.connect(qgs_logger)
+
+    crs = qgis.core.QgsCoordinateReferenceSystem(args.crs)
+    if not crs.isValid():
+        logging.error("Invalid CRS: '%s'", args.crs)
+        sys.exit(1)
+    logging.debug("Parsed CRS: %s", crs.authid())
+
+    do_grouping = not args.no_group
+    project, extent = generate_project(args.input, crs, do_grouping)
+    project.setFileName(str(args.output))
+    project.viewSettings().setDefaultViewExtent(extent)
+    project.write()
+
+    if args.open:
+        open_qgis(args.output)
+
+
+def generate_project(
+    layers: List[pathlib.Path],  # May be files or directories
+    crs: qgis.core.QgsCoordinateReferenceSystem,
+    do_grouping: bool,
+) -> (qgis.core.QgsProject, qgis.core.QgsReferencedRectangle):
+    project = qgis.core.QgsProject.instance()
+    project.setCrs(crs)
+
+    tree = project.layerTreeRoot()
+    groups = {}
+    if do_grouping:
+        groups = build_directory_tree_groups(tree, layers)
+    logging.debug("groups: %s", groups)
+
+    csv_files = []
+    for layer in layers:
+        if layer.is_dir():
+            csv_files += layer.rglob("*.csv")
+        elif layer.suffix == ".csv":
+            csv_files.append(layer)
+
+    start = time.time()
+    total_extent = qgis.core.QgsRectangle()
+    for file in csv_files:
+        layer = create_csv_layer(file, crs.authid())
+        if not layer:
+            logging.error("Failed to create layer %s", file)
+            continue
+        total_extent.combineExtentWith(layer.extent())
+        group_key = str(file.parent)
+        add_to_legend = True
+        if group_key in groups:
+            add_to_legend = False
+            group = groups[group_key]
+            group.insertLayer(0, layer)
+        project.addMapLayer(layer, addToLegend=add_to_legend)
+    stop = time.time()
+    logging.debug("Found layers extent: %s", total_extent.toString())
+    logging.info("Added layers in %f", stop - start)
+
+    canvas = qgis.gui.QgsMapCanvas()
+    canvas.setExtent(total_extent)
+
+    ref_extent = qgis.core.QgsReferencedRectangle(total_extent, crs)
+
+    return project, ref_extent
+
+
+def build_directory_tree_groups(
+    tree: qgis.core.QgsLayerTree, inputs: List[pathlib.Path]
+) -> Dict[pathlib.Path, qgis.core.QgsLayerTreeGroup]:
+    """Create layer tree groups for the given input files/directories.
+
+    Returns a dict of directory names => group mappings. If a file belongs to a group, there will be
+    a group corresponding to the file's directory.
+    """
+    # I found it really hard to correctly group files without a priori knowledge about the
+    # groupings (common directories). So this version of the script only groups directory inputs,
+    # because that's what I tend to need anyways.
+    directories = [p for p in inputs if p.is_dir()]
+    return build_directory_trees_from_directories_only(tree, directories)
+
+
+def build_directory_trees_from_directories_only(
+    tree: qgis.core.QgsLayerTree, directories: List[pathlib.Path]
+) -> Dict[pathlib.Path, qgis.core.QgsLayerTreeGroup]:
+    """Create layer tree groups for each directory, and its children."""
+    groups = {}
+
+    for directory in directories:
+        subdirs = [root for root, _dirs, _files in os.walk(directory)]
+        subdirs.sort()
+        for subdir in subdirs:
+            root = pathlib.Path(subdir)
+            key = str(root)
+            parent_key = str(root.parent)
+
+            group = qgis.core.QgsLayerTreeGroup(root.stem)
+            groups[key] = group
+            group_type = None
+            if parent_key in groups:
+                # This is a sub-group of an existing group
+                group_type = "subgroup"
+                parent = groups[parent_key]
+                parent.addChildNode(group)
+            else:
+                # This is a new top-level group
+                group_type = "top-level group"
+                tree.addChildNode(group)
+            logging.debug("Created new %s for %s", group_type, root)
+
+    return groups
+
+
+def create_csv_layer(path: pathlib.Path, crs: str) -> Optional[qgis.core.QgsVectorLayer]:
+    path = path.resolve()
+    if not path.exists():
+        logging.error("CSV file %s doesn't exist", path)
+        return None
+    if path.suffix != ".csv":
+        logging.error("%s doesn't look like a CSV file", path)
+        return None
+
+    name = path.stem
+    path = str(path)
+    # Normalize \ to / even on windows
+    path = path.replace("\\", "/")
+
+    # ANGRY RANT: Normally URIs start with the protocol ('file://') and then you add the path, like
+    # f"file://{path}", which results in something like file:///home/user/... on Linux, and
+    # file://C:/Users/user/... on Windows. But on Windows, it needs to be file:///C:/ so we always
+    # add an extra slash here, which results in file:////home/user/ on Linux, but the expected
+    # file:///C:/ on Windows.
+    uri = f"file:///{path}?type=csv&detectTypes=yes&wktField=geometry&useHeader=yes&crs={crs}"
+
+    logging.debug("Creating layer %s ...", uri)
+
+    layer = qgis.core.QgsVectorLayer(uri, name, "delimitedtext")
+    if not layer.isValid():
+        # NOTE: I've never actually seen one of these error messages be non-empty. I think they're
+        # maybe never set by QGIS, and only ever set by a plugin through the API?
+        logging.error("Layer %s invalid: '%s'", name, layer.error().message())
+        return None
+
+    return layer
+
+
+def open_qgis(project: pathlib.Path):
+    project = project.absolute()
+    logging.info("Opening %s ...", project)
+    with subprocess.Popen(
+        ["qgis", "--project", str(project)], shell=False, stdout=subprocess.PIPE
+    ) as p:
+        p.wait()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    fmt = "%(asctime)s %(module)s %(levelname)s: %(message)s"
+    logging.basicConfig(
+        format=fmt,
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+        level=args.log_level,
+        stream=sys.stderr,
+    )
+    # Color log output if possible, because I'm a sucker
+    try:
+        import coloredlogs
+
+        coloredlogs.install(fmt=fmt, level=args.log_level, datefmt="%Y-%m-%dT%H:%M:%S%z")
+    except ImportError:
+        pass
+    main(args)

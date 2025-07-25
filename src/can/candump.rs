@@ -132,7 +132,7 @@ fn parse_candump_cli_msg(line: &str) -> eyre::Result<CanFrame> {
     }
 
     let mut data = [0, 0, 0, 0, 0, 0, 0, 0];
-    #[allow(clippy::needless_range_loop)]
+    #[expect(clippy::needless_range_loop)]
     for i in 0..dlc {
         let Some(maybe_byte) = parts.next() else {
             eyre::bail!("Failed to parse data byte {i} from line: {line:?}");
@@ -189,7 +189,7 @@ fn parse_candump_file_msg(line: &str) -> eyre::Result<CanFrame> {
     }
     let dlc = maybe_data.len() / 2;
     let mut data = [0, 0, 0, 0, 0, 0, 0, 0];
-    #[allow(clippy::needless_range_loop)]
+    #[expect(clippy::needless_range_loop)]
     for i in 0..dlc {
         let j = i * 2;
         let byte =
