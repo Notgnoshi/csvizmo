@@ -293,7 +293,7 @@ impl Session for Iso11783TransportProtocolSession {
             let control_byte = frame.data[0];
             match control_byte {
                 // TP.CM_RTS and TP.CM_BAM are src -> dst
-                0x10 | 0x20 => return (src << 8) | dst,
+                0x10 | 0x20 => (src << 8) | dst,
                 // TP.CM_CTS, TP.CM_ABRT, and TP.CM_ACK are dst -> src
                 0x11 | 0x13 | 0xFF => (dst << 8) | src,
                 _ => unreachable!("TP.CM Control byte {control_byte:#X} is reserved"),

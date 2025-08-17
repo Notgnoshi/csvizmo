@@ -46,7 +46,7 @@ impl Session for IdentitySession {
     }
 
     fn handle_frame(&mut self, frame: CanMessage) -> eyre::Result<Option<CanMessage>> {
-        Ok(Some(frame.into()))
+        Ok(Some(frame))
     }
 }
 

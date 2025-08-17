@@ -106,7 +106,7 @@ impl FastPacketSession {
         }
     }
 
-    fn handle_first_frame(&mut self, frame: CanMessage) -> eyre::Result<()> {
+    fn handle_first_frame(&mut self, mut frame: CanMessage) -> eyre::Result<()> {
         self.session_data_length = frame.session_data_length();
         self.session_group_id = frame.group_id();
         self.current_frame_counter = frame.frame_counter();
@@ -118,10 +118,9 @@ impl FastPacketSession {
             data.len(),
             self.session_data_length,
         );
-        let mut msg: CanMessage = frame.into();
-        msg.dlc = self.session_data_length;
-        msg.data = data;
-        self.message = Some(msg);
+        frame.dlc = self.session_data_length;
+        frame.data = data;
+        self.message = Some(frame);
 
         Ok(())
     }
