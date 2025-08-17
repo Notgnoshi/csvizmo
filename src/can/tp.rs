@@ -1,31 +1,31 @@
-use crate::can::{CanFrame, CanMessage, Session};
+use crate::can::{CanMessage, Session};
 
 #[repr(transparent)]
-struct TpDt(CanFrame);
+struct TpDt(CanMessage);
 
 impl TpDt {
     #[inline]
     #[must_use]
     fn seq_id(&self) -> u8 {
-        self.0.data()[0]
+        self.0.data[0]
     }
 
     #[inline]
     #[must_use]
     fn data(&self) -> &[u8] {
-        &self.0.data()[1..]
+        &self.0.data[1..]
     }
 }
 
 #[repr(transparent)]
-struct TpCmRts(CanFrame);
+struct TpCmRts(CanMessage);
 
 impl TpCmRts {
     #[inline]
     #[must_use]
     fn total_message_bytes(&self) -> u16 {
-        let low_byte = self.0.data()[1] as u16;
-        let high_byte = (self.0.data()[2] as u16) << 8;
+        let low_byte = self.0.data[1] as u16;
+        let high_byte = (self.0.data[2] as u16) << 8;
 
         let result = high_byte | low_byte;
         debug_assert!(result > 8);
@@ -36,7 +36,7 @@ impl TpCmRts {
     #[inline]
     #[must_use]
     fn total_message_packets(&self) -> u8 {
-        self.0.data()[3]
+        self.0.data[3]
     }
 
     /// Maximum number of packets the sender is willing to send together in a burst
@@ -46,23 +46,23 @@ impl TpCmRts {
     #[must_use]
     #[cfg(test)]
     fn max_number_packets(&self) -> u8 {
-        self.0.data()[4]
+        self.0.data[4]
     }
 
     /// The PGN of the message being sent
     #[inline]
     #[must_use]
     fn message_pgn(&self) -> u32 {
-        let low_byte = self.0.data()[5] as u32;
-        let mid_byte = (self.0.data()[6] as u32) << 8;
-        let high_byte = (self.0.data()[7] as u32) << 16;
+        let low_byte = self.0.data[5] as u32;
+        let mid_byte = (self.0.data[6] as u32) << 8;
+        let high_byte = (self.0.data[7] as u32) << 16;
 
         high_byte | mid_byte | low_byte
     }
 }
 
 #[repr(transparent)]
-struct TpCmCts(CanFrame);
+struct TpCmCts(CanMessage);
 
 impl TpCmCts {
     /// Number of packets the receiver is allowing the sender to send in one burst
@@ -70,38 +70,38 @@ impl TpCmCts {
     #[must_use]
     fn number_of_packets(&self) -> u8 {
         // must not be larger than the TpCmRts.total_message_packets or TpCmRts.max_number_packets
-        self.0.data()[1]
+        self.0.data[1]
     }
 
     /// The next packet number the receiver is expecting
     #[inline]
     #[must_use]
     fn next_packet(&self) -> u8 {
-        self.0.data()[2]
+        self.0.data[2]
     }
 
     /// The PGN of the message being received
     #[inline]
     #[must_use]
     fn message_pgn(&self) -> u32 {
-        let low_byte = self.0.data()[5] as u32;
-        let mid_byte = (self.0.data()[6] as u32) << 8;
-        let high_byte = (self.0.data()[7] as u32) << 16;
+        let low_byte = self.0.data[5] as u32;
+        let mid_byte = (self.0.data[6] as u32) << 8;
+        let high_byte = (self.0.data[7] as u32) << 16;
 
         high_byte | mid_byte | low_byte
     }
 }
 
 #[repr(transparent)]
-struct TpCmEndOfMsgAck(CanFrame);
+struct TpCmEndOfMsgAck(CanMessage);
 
 impl TpCmEndOfMsgAck {
     #[inline]
     #[must_use]
     #[cfg(test)]
     fn total_message_bytes(&self) -> u16 {
-        let low_byte = self.0.data()[1] as u16;
-        let high_byte = (self.0.data()[2] as u16) << 8;
+        let low_byte = self.0.data[1] as u16;
+        let high_byte = (self.0.data[2] as u16) << 8;
 
         let result = high_byte | low_byte;
         debug_assert!(result > 8);
@@ -113,23 +113,23 @@ impl TpCmEndOfMsgAck {
     #[must_use]
     #[cfg(test)]
     fn total_message_packets(&self) -> u8 {
-        self.0.data()[3]
+        self.0.data[3]
     }
 
     /// The PGN of the message being acknowledged
     #[inline]
     #[must_use]
     fn message_pgn(&self) -> u32 {
-        let low_byte = self.0.data()[5] as u32;
-        let mid_byte = (self.0.data()[6] as u32) << 8;
-        let high_byte = (self.0.data()[7] as u32) << 16;
+        let low_byte = self.0.data[5] as u32;
+        let mid_byte = (self.0.data[6] as u32) << 8;
+        let high_byte = (self.0.data[7] as u32) << 16;
 
         high_byte | mid_byte | low_byte
     }
 }
 
 #[repr(transparent)]
-struct TpCmConnAbort(CanFrame);
+struct TpCmConnAbort(CanMessage);
 
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq)]
@@ -152,7 +152,7 @@ impl TpCmConnAbort {
     #[inline]
     #[must_use]
     fn abort_reason(&self) -> AbortReason {
-        match self.0.data()[1] {
+        match self.0.data[1] {
             0 | 10..=249 => AbortReason::Reserved,
             1 => AbortReason::ExistingTransportSession,
             2 => AbortReason::SystemResources,
@@ -171,23 +171,23 @@ impl TpCmConnAbort {
     #[inline]
     #[must_use]
     fn message_pgn(&self) -> u32 {
-        let low_byte = self.0.data()[5] as u32;
-        let mid_byte = (self.0.data()[6] as u32) << 8;
-        let high_byte = (self.0.data()[7] as u32) << 16;
+        let low_byte = self.0.data[5] as u32;
+        let mid_byte = (self.0.data[6] as u32) << 8;
+        let high_byte = (self.0.data[7] as u32) << 16;
 
         high_byte | mid_byte | low_byte
     }
 }
 
 #[repr(transparent)]
-struct TpCmBam(CanFrame);
+struct TpCmBam(CanMessage);
 
 impl TpCmBam {
     #[inline]
     #[must_use]
     fn total_message_bytes(&self) -> u16 {
-        let low_byte = self.0.data()[1] as u16;
-        let high_byte = (self.0.data()[2] as u16) << 8;
+        let low_byte = self.0.data[1] as u16;
+        let high_byte = (self.0.data[2] as u16) << 8;
 
         let result = high_byte | low_byte;
         debug_assert!(result > 8);
@@ -198,16 +198,16 @@ impl TpCmBam {
     #[inline]
     #[must_use]
     fn total_message_packets(&self) -> u8 {
-        self.0.data()[3]
+        self.0.data[3]
     }
 
     /// The PGN of the message being broadcast
     #[inline]
     #[must_use]
     fn message_pgn(&self) -> u32 {
-        let low_byte = self.0.data()[5] as u32;
-        let mid_byte = (self.0.data()[6] as u32) << 8;
-        let high_byte = (self.0.data()[7] as u32) << 16;
+        let low_byte = self.0.data[5] as u32;
+        let mid_byte = (self.0.data[6] as u32) << 8;
+        let high_byte = (self.0.data[7] as u32) << 16;
 
         high_byte | mid_byte | low_byte
     }
@@ -267,7 +267,7 @@ impl TpCmBam {
 ///   * RTS during an existing session
 #[derive(Default)]
 pub struct Iso11783TransportProtocolSession {
-    /// The CanMessage being reconstructed from each of the CanFrames
+    /// The CanMessage being reconstructed from each of the CanMessages
     msg: Option<CanMessage>,
     /// Does this session need flow control, or is it a BAM session?
     needs_ack: bool,
@@ -280,17 +280,17 @@ pub struct Iso11783TransportProtocolSession {
 }
 
 impl Session for Iso11783TransportProtocolSession {
-    fn session_id(frame: &CanFrame) -> u32 {
+    fn session_id(frame: &CanMessage) -> u32 {
         // Create the session ID with | src | dst | of the session sender -> receiver (not just the
         // frame src and dst address).
-        let src = frame.src() as u32;
-        let dst = frame.dst() as u32;
+        let src = frame.src as u32;
+        let dst = frame.dst as u32;
 
         // TP.DT is src -> dst
-        if frame.pgn() == 0xEB00 {
+        if frame.pgn == 0xEB00 {
             (src << 8) | dst
-        } else if frame.pgn() == 0xEC00 {
-            let control_byte = frame.data()[0];
+        } else if frame.pgn == 0xEC00 {
+            let control_byte = frame.data[0];
             match control_byte {
                 // TP.CM_RTS and TP.CM_BAM are src -> dst
                 0x10 | 0x20 => return (src << 8) | dst,
@@ -301,24 +301,24 @@ impl Session for Iso11783TransportProtocolSession {
         } else {
             unreachable!(
                 "ISO 11783-3 Transport Protocol only uses 0xEC00 and 0xEB00 pgns. Got {:#X}",
-                frame.pgn()
+                frame.pgn
             );
         }
     }
 
-    fn accepts_frame(frame: &CanFrame) -> bool {
-        frame.pgn() == 0xEB00 || frame.pgn() == 0xEC00
+    fn accepts_frame(frame: &CanMessage) -> bool {
+        frame.pgn == 0xEB00 || frame.pgn == 0xEC00
     }
 
-    fn handle_frame(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>> {
-        if frame.pgn() == 0xEC00 {
+    fn handle_frame(&mut self, frame: CanMessage) -> eyre::Result<Option<CanMessage>> {
+        if frame.pgn == 0xEC00 {
             self.handle_control_message(frame)
-        } else if frame.pgn() == 0xEB00 {
+        } else if frame.pgn == 0xEB00 {
             self.handle_data_transfer(TpDt(frame))
         } else {
             unreachable!(
                 "ISO 11783-3 Transport Protocol only uses 0xEC00 and 0xEB00 pgns. Got {:#X}",
-                frame.pgn()
+                frame.pgn
             );
         }
     }
@@ -334,9 +334,9 @@ impl Iso11783TransportProtocolSession {
 
 /// Private implementation
 impl Iso11783TransportProtocolSession {
-    fn handle_control_message(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>> {
+    fn handle_control_message(&mut self, frame: CanMessage) -> eyre::Result<Option<CanMessage>> {
         debug_assert!(frame.dlc == 8, "TP.CM messages must be 8 bytes");
-        let control_byte = frame.data()[0];
+        let control_byte = frame.data[0];
         match control_byte {
             0x10 => self.handle_request_to_send(TpCmRts(frame)),
             0x11 => self.handle_clear_to_send(TpCmCts(frame)),
@@ -351,8 +351,8 @@ impl Iso11783TransportProtocolSession {
         let Some(msg) = self.msg.as_mut() else {
             eyre::bail!(
                 "Unexpected TP.DT {:#X} -> {:#X} seq: {:#04X}/{:#04X} before TP.CM_RTS or TP.CM_BAM",
-                frame.0.src(),
-                frame.0.dst(),
+                frame.0.src,
+                frame.0.dst,
                 frame.seq_id(),
                 self.expected_packets,
             );
@@ -369,8 +369,8 @@ impl Iso11783TransportProtocolSession {
 
         tracing::trace!(
             "TP.DT     {:#X} -> {:#X} seq: {:#04X}/{:#04X} bytes: {}/{}",
-            frame.0.src(),
-            frame.0.dst(),
+            frame.0.src,
+            frame.0.dst,
             frame.seq_id(),
             self.expected_packets,
             msg.data.len(),
@@ -389,8 +389,8 @@ impl Iso11783TransportProtocolSession {
     fn handle_request_to_send(&mut self, frame: TpCmRts) -> eyre::Result<Option<CanMessage>> {
         tracing::debug!(
             "TP.CM_RTS {:#X} -> {:#X} packets: {}, bytes: {} pgn: {:#X}",
-            frame.0.src(),
-            frame.0.dst(),
+            frame.0.src,
+            frame.0.dst,
             frame.total_message_packets(),
             frame.total_message_bytes(),
             frame.message_pgn()
@@ -408,7 +408,7 @@ impl Iso11783TransportProtocolSession {
     fn handle_broadcast_announce(&mut self, frame: TpCmBam) -> eyre::Result<Option<CanMessage>> {
         tracing::debug!(
             "TP.CM_BAM from {:#X} packets: {}, bytes: {} pgn: {:#X}",
-            frame.0.src(),
+            frame.0.src,
             frame.total_message_packets(),
             frame.total_message_bytes(),
             frame.message_pgn()
@@ -430,13 +430,13 @@ impl Iso11783TransportProtocolSession {
         bytes: usize,
         packets: u8,
         pgn: u32,
-        frame: CanFrame,
+        frame: CanMessage,
     ) -> eyre::Result<()> {
         if self.msg.is_some() {
             tracing::error!(
                 "Multiple TP.CM_RTS or TM.CM_BAM frames for the same session: {:#X} -> {:#X} @ {}",
-                frame.dst(),
-                frame.src(),
+                frame.dst,
+                frame.src,
                 frame.timestamp,
             );
         }
@@ -449,18 +449,18 @@ impl Iso11783TransportProtocolSession {
         //
         // | 3    | 1   | 1  | 8    | 8    | 8   |
         // | prio | EDP | DP | PDUF | PDUS | SRC |
-        let mut canid = (frame.priority() as u32) << 26;
+        let mut canid = (frame.priority as u32) << 26;
         canid |= pgn << 8;
         let pdu_format = (pgn & 0xFF00) >> 8;
         if pdu_format <= 0xEF {
-            canid |= (frame.dst() as u32) << 8;
+            canid |= (frame.dst as u32) << 8;
         }
-        canid |= frame.src() as u32;
+        canid |= frame.src as u32;
 
         let msg = CanMessage {
-            src: frame.src(),
-            dst: frame.dst(),
-            priority: frame.priority(),
+            src: frame.src,
+            dst: frame.dst,
+            priority: frame.priority,
             timestamp: frame.timestamp,
             interface: frame.interface,
             canid,
@@ -480,8 +480,8 @@ impl Iso11783TransportProtocolSession {
         if self.msg.is_some() {
             tracing::trace!(
                 "TP.CM_CTS {:#X} <- {:#X} seq: {:#04X} window: {} pgn: {:#X}",
-                frame.0.dst(),
-                frame.0.src(),
+                frame.0.dst,
+                frame.0.src,
                 frame.next_packet(),
                 frame.number_of_packets(),
                 frame.message_pgn()
@@ -489,8 +489,8 @@ impl Iso11783TransportProtocolSession {
         } else {
             eyre::bail!(
                 "Unexpected TP.CM_CTS {:#X} <- {:#X} seq: {:#04X} window: {} pgn: {:#X} before TP.CM_RTS or TP.CM_BAM",
-                frame.0.dst(),
-                frame.0.src(),
+                frame.0.dst,
+                frame.0.src,
                 frame.next_packet(),
                 frame.number_of_packets(),
                 frame.message_pgn()
@@ -507,17 +507,17 @@ impl Iso11783TransportProtocolSession {
         let Some(mut msg) = self.msg.take() else {
             eyre::bail!(
                 "Unexpected TP.CM_ACK {:#X} <- {:#X} pgn {:#X} before TP.CM_RTS or TP.CM_BAM",
-                frame.0.dst(),
-                frame.0.src(),
+                frame.0.dst,
+                frame.0.src,
                 frame.message_pgn()
             );
         };
         tracing::debug!(
             "TP.CM_ACK {:#X} <- {:#X} bytes {} pgn {:#X}",
-            frame.0.dst(),
-            frame.0.src(),
+            frame.0.dst,
+            frame.0.src,
             msg.data.len(),
-            frame.message_pgn()
+            frame.message_pgn(),
         );
         msg.timestamp = frame.0.timestamp;
         Ok(Some(msg))
@@ -529,8 +529,8 @@ impl Iso11783TransportProtocolSession {
     ) -> eyre::Result<Option<CanMessage>> {
         tracing::warn!(
             "TP.CM_ABRT {:#X} <- {:#X} reason {:?} pgn {:#X}",
-            frame.0.dst(),
-            frame.0.src(),
+            frame.0.dst,
+            frame.0.src,
             frame.abort_reason(),
             frame.message_pgn()
         );
@@ -544,7 +544,7 @@ mod tests {
     use super::*;
     use crate::can::{CandumpFormat, parse_candump};
 
-    fn fixture_one_big_dt_chunk() -> impl Iterator<Item = CanFrame> {
+    fn fixture_one_big_dt_chunk() -> impl Iterator<Item = CanMessage> {
         // TP.CM_CTS said "screw it, send everything"
         let candump = "\
             (1661789611.150752) can1 18EC1C2A#10900015FF00EF01 T \n\
@@ -578,7 +578,7 @@ mod tests {
         parse_candump(candump)
     }
 
-    fn fixture_multi_chunk() -> impl Iterator<Item = CanFrame> {
+    fn fixture_multi_chunk() -> impl Iterator<Item = CanMessage> {
         let candump = "\
             (1665781494.217819) can1 18EC1C2A#10D8001FFF00EF00 \n\
                                                                \n\
@@ -630,7 +630,7 @@ mod tests {
         parse_candump(candump)
     }
 
-    fn fixture_bam_dm1() -> impl Iterator<Item = CanFrame> {
+    fn fixture_bam_dm1() -> impl Iterator<Item = CanMessage> {
         let candump = "\
             (1666812359.079961) can1 18ECFF1C#200E0002FFCAFE00 \n\
             (1666812359.131833) can1 14EBFF1C#0100FF7B1402030A \n\
