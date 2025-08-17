@@ -46,6 +46,20 @@ impl From<CanFrame> for CanMessage {
 }
 
 impl CanMessage {
+    pub fn new(timestamp: f64, interface: String, canid: u32, data: Vec<u8>) -> Self {
+        Self {
+            timestamp,
+            interface,
+            canid,
+            priority: priority(canid),
+            pgn: pgn(canid),
+            src: src(canid),
+            dst: dst(canid),
+            dlc: data.len(),
+            data,
+        }
+    }
+
     pub fn write<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         writeln!(
             writer,
@@ -55,6 +69,66 @@ impl CanMessage {
             hex::encode_upper(self.canid.to_be_bytes()),
             hex::encode_upper(&self.data)
         )
+    }
+}
+
+#[inline]
+#[must_use]
+fn dst(canid: u32) -> u8 {
+    if is_point_to_point(canid) {
+        pdu_specific(canid) as u8
+    } else {
+        0xFF // global
+    }
+}
+
+#[inline]
+#[must_use]
+fn src(canid: u32) -> u8 {
+    (canid & 0xFF) as u8
+}
+
+#[inline]
+#[must_use]
+fn priority(canid: u32) -> u8 {
+    let shifted = canid >> 26;
+    let masked = shifted & 0b0111;
+    masked as u8
+}
+
+#[inline]
+#[must_use]
+fn is_point_to_point(canid: u32) -> bool {
+    // destination-specific range is 00..=EF
+    // broadcast range is F0..=FF
+    pdu_format(canid) <= 0xEF
+}
+
+#[inline]
+#[must_use]
+fn pdu_format(canid: u32) -> u32 {
+    (canid & 0xFF0000) >> 16
+}
+
+#[inline]
+#[must_use]
+fn pdu_specific(canid: u32) -> u32 {
+    (canid & 0x00FF00) >> 8
+}
+
+#[inline]
+#[must_use]
+fn pgn(canid: u32) -> u32 {
+    let orig = canid;
+    // Shift off the src address
+    let canid = canid >> 8;
+    // Mask off the priority bits, leaving the EDP and DP data page bits
+    let canid = canid & 0x3FFFF;
+
+    if is_point_to_point(orig) {
+        canid & 0x3FF00
+    } else {
+        canid
     }
 }
 
@@ -91,60 +165,43 @@ impl CanFrame {
     #[inline]
     #[must_use]
     pub fn dst(&self) -> u8 {
-        if self.is_point_to_point() {
-            self.pdu_specific() as u8
-        } else {
-            0xFF // global
-        }
+        dst(self.canid)
     }
 
     #[inline]
     #[must_use]
     pub fn src(&self) -> u8 {
-        (self.canid & 0xFF) as u8
+        src(self.canid)
     }
 
     #[inline]
     #[must_use]
     pub fn priority(&self) -> u8 {
-        let shifted = self.canid >> 26;
-        let masked = shifted & 0b0111;
-        masked as u8
+        priority(self.canid)
     }
 
     #[inline]
     #[must_use]
     pub fn is_point_to_point(&self) -> bool {
-        // destination-specific range is 00..=EF
-        // broadcast range is F0..=FF
-        self.pdu_format() <= 0xEF
+        is_point_to_point(self.canid)
     }
 
     #[inline]
     #[must_use]
     pub fn pdu_format(&self) -> u32 {
-        (self.canid & 0xFF0000) >> 16
+        pdu_format(self.canid)
     }
 
     #[inline]
     #[must_use]
     pub fn pdu_specific(&self) -> u32 {
-        (self.canid & 0x00FF00) >> 8
+        pdu_specific(self.canid)
     }
 
     #[inline]
     #[must_use]
     pub fn pgn(&self) -> u32 {
-        // Shift off the src address
-        let canid = self.canid >> 8;
-        // Mask off the priority bits, leaving the EDP and DP data page bits
-        let canid = canid & 0x3FFFF;
-
-        if self.is_point_to_point() {
-            canid & 0x3FF00
-        } else {
-            canid
-        }
+        pgn(self.canid)
     }
 }
 

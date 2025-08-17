@@ -3,10 +3,10 @@ use std::io::{BufRead, BufReader, Lines, Read};
 
 use eyre::WrapErr;
 
-use crate::can::CanFrame;
+use crate::can::CanMessage;
 
 /// Parse the given candump, skipping over any parse errors
-pub fn parse_candump(candump: &str) -> impl Iterator<Item = CanFrame> {
+pub fn parse_candump(candump: &str) -> impl Iterator<Item = CanMessage> {
     CandumpParser::new(candump.as_bytes()).filter_map(|r| r.ok())
 }
 
@@ -52,7 +52,7 @@ impl<R: Read> CandumpParser<R> {
 
 /// There will be one Item for each input line. The iterator runs out when the input lines run out
 impl<R: Read> Iterator for CandumpParser<R> {
-    type Item = eyre::Result<CanFrame>;
+    type Item = eyre::Result<CanMessage>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let line = self.lines.next()?;
@@ -65,7 +65,7 @@ impl<R: Read> Iterator for CandumpParser<R> {
 
 impl CandumpFormat {
     /// Attempt to parse a [CanFrame] from the given line
-    pub fn parse(&mut self, line: &str) -> eyre::Result<CanFrame> {
+    pub fn parse(&mut self, line: &str) -> eyre::Result<CanMessage> {
         match self {
             CandumpFormat::Auto => {
                 if let Ok(result) = parse_candump_file_msg(line) {
@@ -105,7 +105,7 @@ fn strip_outer_brackets(field: &str, first: char, last: char) -> &str {
 /// $ candump -ta can0
 /// (1739136517.221471)  can0  123   [3]  FF FF FF
 /// ```
-fn parse_candump_cli_msg(line: &str) -> eyre::Result<CanFrame> {
+fn parse_candump_cli_msg(line: &str) -> eyre::Result<CanMessage> {
     let mut parts = line.split_ascii_whitespace();
 
     let Some(maybe_timestamp) = parts.next() else {
@@ -127,12 +127,7 @@ fn parse_candump_cli_msg(line: &str) -> eyre::Result<CanFrame> {
     };
     let maybe_dlc = strip_outer_brackets(maybe_dlc, '[', ']');
     let dlc: usize = maybe_dlc.parse().wrap_err("Failed to parse dlc as usize")?;
-    if dlc > 8 {
-        eyre::bail!("dlc {dlc} exceeds maximum dlc of 8 bytes");
-    }
-
-    let mut data = [0, 0, 0, 0, 0, 0, 0, 0];
-    #[expect(clippy::needless_range_loop)]
+    let mut data = Vec::with_capacity(dlc);
     for i in 0..dlc {
         let Some(maybe_byte) = parts.next() else {
             eyre::bail!("Failed to parse data byte {i} from line: {line:?}");
@@ -143,13 +138,12 @@ fn parse_candump_cli_msg(line: &str) -> eyre::Result<CanFrame> {
             );
         }
         let byte = u8::from_str_radix(maybe_byte, 16).wrap_err("Failed to parse data byte")?;
-        data[i] = byte;
+        data.push(byte);
     }
-    Ok(CanFrame::new(
+    Ok(CanMessage::new(
         timestamp,
         interface.to_string(),
         canid,
-        dlc,
         data,
     ))
 }
@@ -160,7 +154,7 @@ fn parse_candump_cli_msg(line: &str) -> eyre::Result<CanFrame> {
 /// $ candump -L can0
 /// (1739136482.503244) can0 123#FFFFFF
 /// ```
-fn parse_candump_file_msg(line: &str) -> eyre::Result<CanFrame> {
+fn parse_candump_file_msg(line: &str) -> eyre::Result<CanMessage> {
     let mut parts = line.split_ascii_whitespace();
     let Some(maybe_timestamp) = parts.next() else {
         eyre::bail!("Line {line:?} empty");
@@ -184,24 +178,22 @@ fn parse_candump_file_msg(line: &str) -> eyre::Result<CanFrame> {
     let Some(maybe_data) = frame.next() else {
         eyre::bail!("Failed to parse data from: {maybe_frame:?} in line {line:?}");
     };
-    if maybe_data.len() > 16 || maybe_data.len() % 2 != 0 {
+    if maybe_data.len() % 2 != 0 {
         eyre::bail!("Failed to parse data from: {maybe_data:?}: incorrect length");
     }
     let dlc = maybe_data.len() / 2;
-    let mut data = [0, 0, 0, 0, 0, 0, 0, 0];
-    #[expect(clippy::needless_range_loop)]
+    let mut data = Vec::with_capacity(dlc);
     for i in 0..dlc {
         let j = i * 2;
         let byte =
             u8::from_str_radix(&maybe_data[j..j + 2], 16).wrap_err("Failed to parse byte")?;
-        data[i] = byte;
+        data.push(byte);
     }
 
-    Ok(CanFrame::new(
+    Ok(CanMessage::new(
         timestamp,
         interface.to_string(),
         canid,
-        dlc,
         data,
     ))
 }
@@ -212,26 +204,24 @@ mod tests {
 
     use super::*;
 
-    fn cli_format_fixture() -> (&'static str, CanFrame) {
+    fn cli_format_fixture() -> (&'static str, CanMessage) {
         let line = "(1739136517.221471)  can0  123   [3]  0A B0 3f\n";
-        let frame = CanFrame::new(
+        let frame = CanMessage::new(
             1739136517.221471,
             String::from("can0"),
             0x123,
-            3,
-            [0x0A, 0xB0, 0x3F, 0, 0, 0, 0, 0],
+            vec![0x0A, 0xB0, 0x3F],
         );
         (line, frame)
     }
 
-    fn file_format_fixture() -> (&'static str, CanFrame) {
+    fn file_format_fixture() -> (&'static str, CanMessage) {
         let line = "(1739136482.503244) can0 123#0AB03f\n";
-        let frame = CanFrame::new(
+        let frame = CanMessage::new(
             1739136482.503244,
             String::from("can0"),
             0x123,
-            3,
-            [0x0A, 0xB0, 0x3F, 0, 0, 0, 0, 0],
+            vec![0x0A, 0xB0, 0x3F],
         );
         (line, frame)
     }
@@ -275,27 +265,9 @@ mod tests {
                       (03) can0 125#0C\n
                      ";
         let expected = [
-            CanFrame::new(
-                01.0,
-                String::from("can0"),
-                0x123,
-                1,
-                [0x0A, 0, 0, 0, 0, 0, 0, 0],
-            ),
-            CanFrame::new(
-                02.0,
-                String::from("can0"),
-                0x124,
-                1,
-                [0x0B, 0, 0, 0, 0, 0, 0, 0],
-            ),
-            CanFrame::new(
-                03.0,
-                String::from("can0"),
-                0x125,
-                1,
-                [0x0C, 0, 0, 0, 0, 0, 0, 0],
-            ),
+            CanMessage::new(01.0, String::from("can0"), 0x123, vec![0x0A]),
+            CanMessage::new(02.0, String::from("can0"), 0x124, vec![0x0B]),
+            CanMessage::new(03.0, String::from("can0"), 0x125, vec![0x0C]),
         ];
         let actual: Vec<_> = CandumpParser::new(&lines[..])
             .filter_map(|m| m.ok())
@@ -310,27 +282,9 @@ mod tests {
                       (03) can0 125 [1] 0C\n\
                      ";
         let expected = [
-            CanFrame::new(
-                01.0,
-                String::from("can0"),
-                0x123,
-                1,
-                [0x0A, 0, 0, 0, 0, 0, 0, 0],
-            ),
-            CanFrame::new(
-                02.0,
-                String::from("can0"),
-                0x124,
-                1,
-                [0x0B, 0, 0, 0, 0, 0, 0, 0],
-            ),
-            CanFrame::new(
-                03.0,
-                String::from("can0"),
-                0x125,
-                1,
-                [0x0C, 0, 0, 0, 0, 0, 0, 0],
-            ),
+            CanMessage::new(01.0, String::from("can0"), 0x123, vec![0x0A]),
+            CanMessage::new(02.0, String::from("can0"), 0x124, vec![0x0B]),
+            CanMessage::new(03.0, String::from("can0"), 0x125, vec![0x0C]),
         ];
         let actual: Vec<_> = CandumpParser::new(&lines[..])
             .filter_map(|m| m.ok())
