@@ -1,23 +1,23 @@
 use std::collections::HashMap;
 
-use crate::can::{CanFrame, CanMessage, FastPacketSession, Iso11783TransportProtocolSession};
+use crate::can::{CanMessage, FastPacketSession, Iso11783TransportProtocolSession};
 
 /// A transport layer session
 ///
-/// A [Session] is all about adapting possibly multiple [CanFrame]s into one [CanMessage]. That is,
+/// A [Session] is all about adapting possibly multiple frames into one [CanMessage]. That is,
 /// it's about reconstructing larger messages that have been broken across multiple frames.
 pub trait Session {
-    /// Determine if the given [CanFrame] has this [Session] type
-    fn accepts_frame(frame: &CanFrame) -> bool;
+    /// Determine if the given [CanMessage] has this [Session] type
+    fn accepts_frame(frame: &CanMessage) -> bool;
 
-    /// Get the session ID for the given [CanFrame], assuming that the frame is of this [Session]s
+    /// Get the session ID for the given [CanMessage], assuming that the frame is of this [Session]s
     /// type.
     ///
     /// This ID, specifies which particular instance of this [Session] type the given frame belongs
     /// to.
-    fn session_id(frame: &CanFrame) -> u32 {
-        let src = frame.src() as u32;
-        let dst = frame.dst() as u32;
+    fn session_id(frame: &CanMessage) -> u32 {
+        let src = frame.src as u32;
+        let dst = frame.dst as u32;
 
         // It's okay to have two sessions of the same type concurrently sending ecu1->ecu2 and
         // ecu2->ecu1
@@ -32,28 +32,28 @@ pub trait Session {
     ///
     /// [Session]s require in-order frames, and will happily explode in your face if given
     /// out-of-order messages.
-    fn handle_frame(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>>;
+    fn handle_frame(&mut self, frame: CanMessage) -> eyre::Result<Option<CanMessage>>;
 }
 
-/// Pass through [CanFrame]s unchanged into [CanMessage]s
+/// Pass through [CanMessage]s unchanged into [CanMessage]s
 ///
-/// Most [CanFrame]s are actually complete [CanMessage]s, and don't need to be reconstructed.
+/// Most [CanMessage]s are actually complete [CanMessage]s, and don't need to be reconstructed.
 pub struct IdentitySession;
 
 impl Session for IdentitySession {
-    fn accepts_frame(_: &CanFrame) -> bool {
+    fn accepts_frame(_: &CanMessage) -> bool {
         true
     }
 
-    fn handle_frame(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>> {
-        Ok(Some(frame.into()))
+    fn handle_frame(&mut self, frame: CanMessage) -> eyre::Result<Option<CanMessage>> {
+        Ok(Some(frame))
     }
 }
 
 /// Reconstruct known transport layer protocols into [CanMessage]s
 ///
-/// Unknown [CanFrame]s are passed through with the assumption they don't need to be reconstructed.
-pub fn reconstruct_transport_sessions<I: Iterator<Item = CanFrame>>(
+/// Unknown [CanMessage]s are passed through with the assumption they don't need to be reconstructed.
+pub fn reconstruct_transport_sessions<I: Iterator<Item = CanMessage>>(
     frames: I,
 ) -> SessionManager<I> {
     SessionManager {
@@ -64,7 +64,7 @@ pub fn reconstruct_transport_sessions<I: Iterator<Item = CanFrame>>(
     }
 }
 
-pub struct SessionManager<I: Iterator<Item = CanFrame>> {
+pub struct SessionManager<I: Iterator<Item = CanMessage>> {
     frames: I,
 
     identity: IdentitySession,
@@ -72,20 +72,25 @@ pub struct SessionManager<I: Iterator<Item = CanFrame>> {
     transport_protocol: HashMap<u32, (Iso11783TransportProtocolSession, tracing::Span)>,
 }
 
-impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
+impl<I: Iterator<Item = CanMessage>> Iterator for SessionManager<I> {
     // TODO: Maybe if this fails to reconstruct a session, still pass the individual frames
     // through?
     type Item = eyre::Result<CanMessage>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let frame = self.frames.next()?;
+        // Assume that if we've parsed more than 8 bytes, it's already been reconstructed, and we
+        // can just pass it through.
+        if frame.data.len() > 8 {
+            return Some(Ok(frame));
+        }
 
         if FastPacketSession::accepts_frame(&frame) {
             let session_id = FastPacketSession::session_id(&frame);
             let (mut session, span) = self.fast_packet.remove(&session_id).unwrap_or_else(|| {
                 (
                     FastPacketSession::new(),
-                    tracing::debug_span!("FP", src = frame.src(), dst = frame.dst()),
+                    tracing::debug_span!("FP", src = frame.src, dst = frame.dst),
                 )
             });
 
@@ -116,7 +121,7 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
                             // Assume that the first frame to cause a session to get created is
                             // sent from the session sender (that's not actually guaranteed if the
                             // candump was interrupted, or messages were dropped)
-                            tracing::debug_span!("TP", src = frame.src(), dst = frame.dst()),
+                            tracing::debug_span!("TP", src = frame.src, dst = frame.dst),
                         )
                     });
 
@@ -151,7 +156,7 @@ impl<I: Iterator<Item = CanFrame>> Iterator for SessionManager<I> {
     }
 }
 
-impl<I: Iterator<Item = CanFrame>> Drop for SessionManager<I> {
+impl<I: Iterator<Item = CanMessage>> Drop for SessionManager<I> {
     fn drop(&mut self) {
         if !self.fast_packet.is_empty() {
             let in_flight_sessions: Vec<_> = self.fast_packet.keys().collect();

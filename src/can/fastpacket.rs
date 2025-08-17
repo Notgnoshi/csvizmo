@@ -1,4 +1,4 @@
-use crate::can::{CanFrame, CanMessage, Session};
+use crate::can::{CanMessage, Session};
 
 /// NMEA 2000 Fast Packet [Session]
 ///
@@ -26,19 +26,19 @@ pub struct FastPacketSession {
 }
 
 /// Private impl just for Fast Packet
-impl CanFrame {
+impl CanMessage {
     /// The index of this frame within this session
     #[inline]
     #[must_use]
     fn frame_counter(&self) -> u8 {
-        self.data()[0] & 0x0F
+        self.data[0] & 0x0F
     }
 
     /// Identifies a group of frames that belong together in the fast packet session
     #[inline]
     #[must_use]
     fn group_id(&self) -> u8 {
-        self.data()[0] >> 4
+        self.data[0] >> 4
     }
 
     #[inline]
@@ -51,27 +51,27 @@ impl CanFrame {
     #[must_use]
     fn session_data_length(&self) -> usize {
         debug_assert!(self.is_first_frame());
-        self.data()[1] as usize
+        self.data[1] as usize
     }
 
     #[inline]
     #[must_use]
     fn session_data(&self) -> &[u8] {
         if self.is_first_frame() {
-            &self.data()[2..]
+            &self.data[2..]
         } else {
-            &self.data()[1..]
+            &self.data[1..]
         }
     }
 }
 
 impl Session for FastPacketSession {
-    fn accepts_frame(frame: &CanFrame) -> bool {
+    fn accepts_frame(frame: &CanMessage) -> bool {
         // GNSS Position Data is the only Fast Packet message type I care about for now
-        frame.pgn() == 0x1F805
+        frame.pgn == 0x1F805
     }
 
-    fn handle_frame(&mut self, frame: CanFrame) -> eyre::Result<Option<CanMessage>> {
+    fn handle_frame(&mut self, frame: CanMessage) -> eyre::Result<Option<CanMessage>> {
         if frame.is_first_frame() {
             self.handle_first_frame(frame)?;
         } else {
@@ -106,7 +106,7 @@ impl FastPacketSession {
         }
     }
 
-    fn handle_first_frame(&mut self, frame: CanFrame) -> eyre::Result<()> {
+    fn handle_first_frame(&mut self, mut frame: CanMessage) -> eyre::Result<()> {
         self.session_data_length = frame.session_data_length();
         self.session_group_id = frame.group_id();
         self.current_frame_counter = frame.frame_counter();
@@ -118,15 +118,14 @@ impl FastPacketSession {
             data.len(),
             self.session_data_length,
         );
-        let mut msg: CanMessage = frame.into();
-        msg.dlc = self.session_data_length;
-        msg.data = data;
-        self.message = Some(msg);
+        frame.dlc = self.session_data_length;
+        frame.data = data;
+        self.message = Some(frame);
 
         Ok(())
     }
 
-    fn handle_following_frame(&mut self, frame: CanFrame) -> eyre::Result<()> {
+    fn handle_following_frame(&mut self, frame: CanMessage) -> eyre::Result<()> {
         let ctr = frame.frame_counter();
         let seq = self.session_group_id;
         let exp = self.current_frame_counter + 1;
@@ -160,51 +159,42 @@ impl FastPacketSession {
 mod tests {
     use super::*;
 
-    fn fast_packet_fixture() -> ([CanFrame; 4], CanMessage) {
+    fn fast_packet_fixture() -> ([CanMessage; 4], CanMessage) {
         let frames = [
-            CanFrame::new(
+            CanMessage::new(
                 0.0,
                 "can0".to_string(),
                 0x1F805FE,
-                8,
-                [0xE0, 0x1A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+                vec![0xE0, 0x1A, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
             ),
-            CanFrame::new(
+            CanMessage::new(
                 0.0,
                 "can0".to_string(),
                 0x1F805FE,
-                8,
-                [0xE1, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D],
+                vec![0xE1, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D],
             ),
-            CanFrame::new(
+            CanMessage::new(
                 0.0,
                 "can0".to_string(),
                 0x1F805FE,
-                8,
-                [0xE2, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14],
+                vec![0xE2, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14],
             ),
-            CanFrame::new(
+            CanMessage::new(
                 0.0,
                 "can0".to_string(),
                 0x1F805FE,
-                8,
-                [0xE3, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0xFF],
+                vec![0xE3, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0xFF],
             ),
         ];
-        let msg = CanMessage {
-            timestamp: 0.0,
-            interface: "can0".to_string(),
-            canid: 0x1F805FE,
-            priority: 0,
-            pgn: 0x1F805,
-            src: 0xFE,
-            dst: 0xFF,
-            dlc: 0x1A,
-            data: vec![
+        let msg = CanMessage::new(
+            0.0,
+            "can0".to_string(),
+            0x1F805FE,
+            vec![
                 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
                 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A,
             ],
-        };
+        );
         (frames, msg)
     }
 
