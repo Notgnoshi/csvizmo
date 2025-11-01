@@ -30,5 +30,5 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 [dev-dependencies]
 assert_cmd = { version = "2.0.16", features = ["color-auto"] }
-ctor = "0.4.2"
+ctor = "0.6"
 pretty_assertions = "1.4.1"
