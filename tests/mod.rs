@@ -1,20 +1,15 @@
 mod test_can2csv;
 mod test_canstruct;
+mod test_csvcat;
 mod test_csvdelta;
 mod test_csvstats;
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process::Output;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
 
 use assert_cmd::Command;
-
-// Do the expensive cargo invocation to find the path to the binary once, and then cache it for
-// future lookups.
-static CAN2CSV: LazyLock<&Path> = LazyLock::new(|| assert_cmd::cargo::cargo_bin!("can2csv"));
-static CANSTRUCT: LazyLock<&Path> = LazyLock::new(|| assert_cmd::cargo::cargo_bin!("canstruct"));
-static CSVDELTA: LazyLock<&Path> = LazyLock::new(|| assert_cmd::cargo::cargo_bin!("csvdelta"));
-static CSVSTATS: LazyLock<&Path> = LazyLock::new(|| assert_cmd::cargo::cargo_bin!("csvstats"));
 
 pub trait CommandExt {
     /// Same as [Command::output] except with hooks to print stdout/stderr in failed tests
@@ -33,26 +28,30 @@ impl CommandExt for Command {
     }
 }
 
-pub fn can2csv() -> Command {
-    let mut cmd = Command::new(*CAN2CSV);
-    cmd.arg("--log-level=TRACE");
-    cmd
+/// Get a temporary file with the given contents
+pub fn tempfile<S: AsRef<str>>(contents: S) -> eyre::Result<tempfile::NamedTempFile> {
+    let mut file = tempfile::NamedTempFile::new()?;
+    std::io::Write::write_all(&mut file, contents.as_ref().as_bytes())?;
+    Ok(file)
 }
 
-pub fn canstruct() -> Command {
-    let mut cmd = Command::new(*CANSTRUCT);
-    cmd.arg("--log-level=TRACE");
-    cmd
-}
+/// Get a command to run the given tool with Cargo
+pub fn tool(name: &'static str) -> Command {
+    // XXX: Using nextest somewhat defeats this cache, because it runs each test in a separate
+    // process, so the cache has to be rebuilt each time. But having it at least makes me feel
+    // like I tried :/
+    static TOOL_PATH_CACHE: LazyLock<Mutex<HashMap<&'static str, PathBuf>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub fn csvdelta() -> Command {
-    let mut cmd = Command::new(*CSVDELTA);
-    cmd.arg("--log-level=TRACE");
-    cmd
-}
+    let mut cache = TOOL_PATH_CACHE.lock().unwrap();
+    // assert_cmd::cargo::cargo_bin is deprecated but cargo_bin! requires string literal, not &'static str
+    #[allow(deprecated)]
+    let path = cache
+        .entry(name)
+        // TODO: Support the various ./scripts/ as well
+        .or_insert_with(|| assert_cmd::cargo::cargo_bin(name));
 
-pub fn csvstats() -> Command {
-    let mut cmd = Command::new(*CSVSTATS);
+    let mut cmd = Command::new(path);
     cmd.arg("--log-level=TRACE");
     cmd
 }

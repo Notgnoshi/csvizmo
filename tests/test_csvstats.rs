@@ -1,6 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use crate::{CommandExt, csvstats};
+use crate::{CommandExt, tool};
 
 #[test]
 fn test_csvstats_no_plotting() {
@@ -57,7 +57,7 @@ Stats for column \"rolls-session-2\":
     stddev: 5.803823252952202\n\n\
     ";
 
-    let mut cmd = csvstats();
+    let mut cmd = tool("csvstats");
     cmd.arg("--column")
         .arg("rolls-session-1")
         .arg("--column")

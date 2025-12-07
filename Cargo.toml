@@ -1,6 +1,6 @@
 [package]
 name = "csvizmo"
-version = "0.3.1"
+version = "0.4.0"
 autotests = false
 edition = "2024"
 license = "MIT"
@@ -32,3 +32,4 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 assert_cmd = { version = "2.1.1", features = ["color-auto"] }
 ctor = "0.6"
 pretty_assertions = "1.4.1"
+tempfile = "3.20.0"
