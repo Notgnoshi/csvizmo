@@ -1,5 +1,6 @@
 mod test_can2csv;
 mod test_canstruct;
+mod test_csvcat;
 mod test_csvdelta;
 mod test_csvstats;
 
