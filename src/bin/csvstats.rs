@@ -122,10 +122,14 @@ fn main() -> eyre::Result<()> {
     let stats_start = Instant::now();
 
     let mut all_stats = Vec::new();
+    println!("{}", OnlineStats::get_csv_header());
     for (colname, col_data) in args.column.iter().zip(&mut data) {
-        let stats = OnlineStats::from_unsorted_mut(col_data, args.min, args.max);
-
-        println!("Stats for column {colname:?}:");
+        let filename = args
+            .input
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or("stdin".to_string());
+        let stats = OnlineStats::from_unsorted_mut(filename, colname, col_data, args.min, args.max);
         println!("{stats}");
 
         all_stats.push(stats);

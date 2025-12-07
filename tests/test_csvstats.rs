@@ -35,26 +35,9 @@ fn test_csvstats_no_plotting() {
     // The ragged lengths result in 3 NaNs that get filtered out in the second column
 
     let expected = "\
-Stats for column \"rolls-session-1\":
-    count: 24
-    Q1: 3.5
-    median: 10
-    Q3: 13
-    min: 2 at index: 0
-    max: 20 at index: 4
-    mean: 9.791666666666664
-    stddev: 6.93178623865251
-
-Stats for column \"rolls-session-2\":
-    count: 21
-    filtered: 3 (total: 24)
-    Q1: 5
-    median: 8
-    Q3: 14
-    min: 2 at index: 5
-    max: 18 at index: 14
-    mean: 9.571428571428573
-    stddev: 5.803823252952202\n\n\
+        filename,colname,count,filtered,min,min-index,max,max-index,mean,stddev,Q1,median,Q3\n\
+        \"stdin\",\"rolls-session-1\",24,0,2,0,20,4,9.791666666666664,6.93178623865251,3.5,10,13\n\
+        \"stdin\",\"rolls-session-2\",21,3,2,5,18,14,9.571428571428573,5.803823252952202,5,8,14\n\
     ";
 
     let mut cmd = tool("csvstats");
