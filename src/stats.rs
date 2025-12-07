@@ -60,6 +60,8 @@ fn quartiles_impl(data: &[f64]) -> Option<(f64, f64, f64)> {
 
 #[derive(Debug, Clone)]
 pub struct OnlineStats {
+    pub filename: String,
+    pub colname: String,
     pub num: usize,
     pub num_filtered: usize,
     pub mean: f64,
@@ -76,39 +78,52 @@ pub struct OnlineStats {
 
 impl std::fmt::Display for OnlineStats {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        writeln!(f, "    count: {}", self.num)?;
-        if self.num_filtered > 0 {
-            writeln!(
-                f,
-                "    filtered: {} (total: {})",
-                self.num_filtered,
-                self.num + self.num_filtered
-            )?;
-        }
-
         // quartiles are computed by from_unsorted(), which isn't purely online, so they're not
         // guaranteed to be present.
-        if let Some(q1) = self.q1.as_ref() {
-            writeln!(f, "    Q1: {q1}")?;
-        }
-        if let Some(median) = self.median.as_ref() {
-            writeln!(f, "    median: {median}")?;
-        }
-        if let Some(q3) = self.q3.as_ref() {
-            writeln!(f, "    Q3: {q3}")?;
-        }
+        let q1 = if let Some(q1) = &self.q1 {
+            format!("{q1}")
+        } else {
+            String::new()
+        };
+        let median = if let Some(median) = &self.median {
+            format!("{median}")
+        } else {
+            String::new()
+        };
+        let q3 = if let Some(q3) = &self.q3 {
+            format!("{q3}")
+        } else {
+            String::new()
+        };
 
-        writeln!(f, "    min: {} at index: {}", self.min, self.min_index)?;
-        writeln!(f, "    max: {} at index: {}", self.max, self.max_index)?;
-        writeln!(f, "    mean: {}", self.mean)?;
-        writeln!(f, "    stddev: {}", self.stddev())
+        write!(
+            f,
+            "\"{}\",\"{}\",{},{},{},{},{},{},{},{},{},{},{}",
+            self.filename,
+            self.colname,
+            self.num,
+            self.num_filtered,
+            self.min,
+            self.min_index,
+            self.max,
+            self.max_index,
+            self.mean,
+            self.stddev(),
+            q1,
+            median,
+            q3,
+        )
     }
 }
 
 impl OnlineStats {
-    #[expect(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn get_csv_header() -> &'static str {
+        "filename,colname,count,filtered,min,min-index,max,max-index,mean,stddev,Q1,median,Q3"
+    }
+    pub fn new(filename: impl Into<String>, colname: impl Into<String>) -> Self {
         Self {
+            filename: filename.into(),
+            colname: colname.into(),
             num: 0,
             num_filtered: 0,
             mean: 0.0,
@@ -170,8 +185,14 @@ impl OnlineStats {
     }
 
     /// Will sort the data in-place and calculate summary stats and quartiles
-    pub fn from_unsorted_mut(data: &mut [f64], min: Option<f64>, max: Option<f64>) -> Self {
-        let mut this = Self::from_unsorted_iter(data.iter(), min, max);
+    pub fn from_unsorted_mut(
+        filename: impl Into<String>,
+        colname: impl Into<String>,
+        data: &mut [f64],
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Self {
+        let mut this = Self::from_unsorted_iter(filename, colname, data.iter(), min, max);
 
         // sound, because OrderedFloat is a repr(transparent) newtype
         let data = unsafe {
@@ -203,8 +224,14 @@ impl OnlineStats {
     }
 
     /// Given sorted data, will calculate both summary stats and quartiles
-    pub fn from_sorted(data: &[f64], min: Option<f64>, max: Option<f64>) -> Self {
-        let mut this = Self::from_unsorted_iter(data.iter(), min, max);
+    pub fn from_sorted(
+        filename: impl Into<String>,
+        colname: impl Into<String>,
+        data: &[f64],
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Self {
+        let mut this = Self::from_unsorted_iter(filename, colname, data.iter(), min, max);
         if let Some((q1, q2, q3)) = quartiles(data) {
             this.q1 = Some(q1);
             this.median = Some(q2);
@@ -214,11 +241,17 @@ impl OnlineStats {
     }
 
     /// Given unsorted data, will calculate summary stats, skipping quartile calculations
-    pub fn from_unsorted_iter<'v, V>(data: V, min: Option<f64>, max: Option<f64>) -> Self
+    pub fn from_unsorted_iter<'v, V>(
+        filename: impl Into<String>,
+        colname: impl Into<String>,
+        data: V,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Self
     where
         V: Iterator<Item = &'v f64>,
     {
-        let mut stats = Self::new();
+        let mut stats = Self::new(filename, colname);
         for sample in data {
             if let Some(min) = min {
                 if *sample < min {

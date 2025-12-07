@@ -119,7 +119,7 @@ fn main() -> eyre::Result<()> {
     let header = has_header.then_some(input.headers()?).cloned();
 
     // Find the column index of the input column
-    let column_index = column_index(&mut input, args.column)?;
+    let column_index = column_index(&mut input, &args.column)?;
 
     // Write the new header to the output file
     if let Some(header) = header {
@@ -151,7 +151,12 @@ fn main() -> eyre::Result<()> {
         // be just to read the input file twice, which for very very large files, might be better?
         let records: Vec<_> = records.collect();
         let values = records.iter().flat_map(|(_rec, maybe_value)| maybe_value);
-        let stats = OnlineStats::from_unsorted_iter(values, None, None);
+        let filename = args
+            .input
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or("stdin".to_string());
+        let stats = OnlineStats::from_unsorted_iter(filename, &args.column, values, None, None);
 
         let records = map_column_records(records.into_iter(), |maybe_value| {
             maybe_value.map(|v| v - stats.mean).ok()
