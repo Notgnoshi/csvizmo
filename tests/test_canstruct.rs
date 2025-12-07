@@ -1,6 +1,6 @@
 use pretty_assertions::assert_eq;
 
-use crate::{CommandExt, canstruct};
+use crate::{CommandExt, tool};
 
 #[test]
 fn test_single_fp_tp() {
@@ -38,7 +38,10 @@ fn test_single_fp_tp() {
         (1750992427.295025) can0 1CFDC5F9#1111111111111122222222222222333333333333334444444444444455555555555555666666666666667777777777777788888888888888999999\n\
     ";
 
-    let output = canstruct().write_stdin(input).captured_output().unwrap();
+    let output = tool("canstruct")
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, expected);
 }
