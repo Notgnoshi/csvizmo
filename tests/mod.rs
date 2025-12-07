@@ -27,6 +27,13 @@ impl CommandExt for Command {
     }
 }
 
+/// Get a temporary file with the given contents
+pub fn tempfile<S: AsRef<str>>(contents: S) -> eyre::Result<tempfile::NamedTempFile> {
+    let mut file = tempfile::NamedTempFile::new()?;
+    std::io::Write::write_all(&mut file, contents.as_ref().as_bytes())?;
+    Ok(file)
+}
+
 /// Get a command to run the given tool with Cargo
 pub fn tool(name: &'static str) -> Command {
     // XXX: Using nextest somewhat defeats this cache, because it runs each test in a separate
