@@ -85,6 +85,25 @@ $ csvstats --column roll session-2.csv --histogram --bins 20 --discrete
 
 ![D&D roll histogram](./data/session-2-histogram.png)
 
+## csvcat
+
+Concatenate multiple CSV files of the same shape together.
+
+```sh
+$ cat a.csv
+foo,bar,baz
+1,2,3
+4,5,6
+$ cat b.csv
+foo,bar,baz
+7,8,9
+$ csvcat a.csv b.csv
+foo,bar,baz
+1,2,3
+4,5,6
+7,8,9
+```
+
 ## can2k
 
 Parse NMEA 2000 GPS data out of a candump into a CSV file that QGIS can load with minimal effort.
