@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use csvizmo::csv::{column_index, exit_after_first_failed_read, parse_multi_columns};
-use csvizmo::plot::Axes2DExt;
+use csvizmo::plot::{Axes2DExt, Distribution};
 use csvizmo::stats::OnlineStats;
 use csvizmo::stdio::get_input_reader;
 use gnuplot::AxesCommon;
@@ -66,6 +66,10 @@ struct Args {
     /// If not given, use the Freedman-Diaconis rule to determine the bin-width and number of bins.
     #[clap(short, long)]
     bins: Option<usize>,
+
+    /// The distribution to use in the Kernel Density Estimation in the Histogram, if generated
+    #[clap(short = 'D', long, default_value_t = Distribution::Normal)]
+    distribution: Distribution,
 }
 
 fn main() -> eyre::Result<()> {
@@ -149,9 +153,23 @@ fn main() -> eyre::Result<()> {
         let axes = fig.axes2d();
 
         if args.discrete {
-            axes.histplot_discrete(col_data, &stats, args.min, args.max, args.bins);
+            axes.histplot_discrete(
+                col_data,
+                &stats,
+                args.min,
+                args.max,
+                args.bins,
+                args.distribution,
+            );
         } else {
-            axes.histplot_continuous(col_data, &stats, args.min, args.max, args.bins);
+            axes.histplot_continuous(
+                col_data,
+                &stats,
+                args.min,
+                args.max,
+                args.bins,
+                args.distribution,
+            );
         }
 
         axes.set_x_label(colname, &[]);

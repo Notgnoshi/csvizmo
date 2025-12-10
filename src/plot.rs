@@ -5,6 +5,56 @@ use ordered_float::OrderedFloat;
 use crate::counter::Counter;
 use crate::stats::OnlineStats;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Distribution {
+    Cosine,
+    Epanechnikov,
+    Logistic,
+    #[default]
+    Normal,
+    Quartic,
+    Silverman,
+    Triangular,
+    Tricube,
+    Triweight,
+    Uniform,
+}
+
+impl std::fmt::Display for Distribution {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            // important: Should match clap::ValueEnum format
+            Self::Cosine => write!(f, "cosine"),
+            Self::Epanechnikov => write!(f, "epanechnikov"),
+            Self::Logistic => write!(f, "logistic"),
+            Self::Normal => write!(f, "normal"),
+            Self::Quartic => write!(f, "quartic"),
+            Self::Silverman => write!(f, "silverman"),
+            Self::Triangular => write!(f, "triangular"),
+            Self::Tricube => write!(f, "tricube"),
+            Self::Triweight => write!(f, "triweight"),
+            Self::Uniform => write!(f, "uniform"),
+        }
+    }
+}
+
+impl<F: KDEFloat> Kernel<F> for Distribution {
+    fn pdf(&self, x: F) -> F {
+        match self {
+            Distribution::Cosine => Cosine.pdf(x),
+            Distribution::Epanechnikov => Epanechnikov.pdf(x),
+            Distribution::Logistic => Logistic.pdf(x),
+            Distribution::Normal => Normal.pdf(x),
+            Distribution::Quartic => Quartic.pdf(x),
+            Distribution::Silverman => SilvermanKernel.pdf(x),
+            Distribution::Triangular => Triangular.pdf(x),
+            Distribution::Tricube => Tricube.pdf(x),
+            Distribution::Triweight => Triweight.pdf(x),
+            Distribution::Uniform => Uniform.pdf(x),
+        }
+    }
+}
+
 pub trait Axes2DExt {
     fn histplot_discrete(
         &mut self,
@@ -13,6 +63,7 @@ pub trait Axes2DExt {
         min: Option<f64>,
         max: Option<f64>,
         num_bins: Option<usize>,
+        dist: Distribution,
     ) -> &mut Self;
 
     fn histplot_continuous(
@@ -22,6 +73,7 @@ pub trait Axes2DExt {
         min: Option<f64>,
         max: Option<f64>,
         num_bins: Option<usize>,
+        dist: Distribution,
     ) -> &mut Self;
 }
 
@@ -33,6 +85,7 @@ impl Axes2DExt for Axes2D {
         min: Option<f64>,
         max: Option<f64>,
         num_bins: Option<usize>,
+        dist: Distribution,
     ) -> &mut Self {
         let min = if let Some(m) = min { m } else { stats.min };
         let max = if let Some(m) = max { m } else { stats.max };
@@ -55,7 +108,7 @@ impl Axes2DExt for Axes2D {
         let x = unsafe { std::mem::transmute::<Vec<OrderedFloat<f64>>, Vec<f64>>(x) };
         let widths = std::iter::repeat_n(bin_width, x.len()).collect();
 
-        let kde = KernelDensityEstimator::new(x.as_slice(), Silverman, Normal);
+        let kde = KernelDensityEstimator::new(x.as_slice(), Silverman, dist);
         // TODO: This scaling needs tuning I think. It makes the assumption that the median is
         // close to the most common value, which is not the case. it would maybe be better if it
         // were scaled up to the count at the median, but the median isn't guaranteed to be a key
@@ -91,6 +144,7 @@ impl Axes2DExt for Axes2D {
         min: Option<f64>,
         max: Option<f64>,
         num_bins: Option<usize>,
+        dist: Distribution,
     ) -> &mut Self {
         let min = if let Some(m) = min { m } else { stats.min };
         let max = if let Some(m) = max { m } else { stats.max };
@@ -147,7 +201,7 @@ impl Axes2DExt for Axes2D {
         let max_count = max_count as f64;
 
         let x: Vec<_> = x.into_iter().filter(|x| !x.is_nan()).collect();
-        let kde = KernelDensityEstimator::new(x, Silverman, Normal);
+        let kde = KernelDensityEstimator::new(x, Silverman, dist);
         let median_pdf = kde.pdf(&[stats.median.unwrap_or(stats.mean)])[0];
         let sample_points: Vec<_> = itertools_num::linspace(min, max, num_bins * 2).collect();
         let pdf_samples = kde
