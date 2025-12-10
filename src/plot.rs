@@ -109,16 +109,13 @@ impl Axes2DExt for Axes2D {
         let widths = std::iter::repeat_n(bin_width, x.len()).collect();
 
         let kde = KernelDensityEstimator::new(x.as_slice(), Silverman, dist);
-        // TODO: This scaling needs tuning I think. It makes the assumption that the median is
-        // close to the most common value, which is not the case. it would maybe be better if it
-        // were scaled up to the count at the median, but the median isn't guaranteed to be a key
-        // in the Counter.
-        let median_pdf = kde.pdf(&[stats.median.unwrap_or(stats.mean)])[0];
+        // TODO: This scaling needs tuning I think?
+        let mean_pdf = kde.pdf(&[stats.mean])[0];
         let sample_points: Vec<_> = itertools_num::linspace(min, max, num_bins * 2).collect();
         let pdf_samples = kde
             .pdf(&sample_points)
             .into_iter()
-            .map(|s| s * 0.7 * max_count / median_pdf);
+            .map(|s| s * 0.7 * max_count / mean_pdf);
 
         self.set_y_range(AutoOption::Fix(0.0), AutoOption::Fix(max_count + 0.4));
         self.set_x_range(
@@ -202,12 +199,12 @@ impl Axes2DExt for Axes2D {
 
         let x: Vec<_> = x.into_iter().filter(|x| !x.is_nan()).collect();
         let kde = KernelDensityEstimator::new(x, Silverman, dist);
-        let median_pdf = kde.pdf(&[stats.median.unwrap_or(stats.mean)])[0];
+        let mean_pdf = kde.pdf(&[stats.mean])[0];
         let sample_points: Vec<_> = itertools_num::linspace(min, max, num_bins * 2).collect();
         let pdf_samples = kde
             .pdf(&sample_points)
             .into_iter()
-            .map(|s| s * 0.7 * max_count / median_pdf);
+            .map(|s| s * 0.7 * max_count / mean_pdf);
 
         let widths = std::iter::repeat_n(bin_width, bin_centers.len()).collect();
 
