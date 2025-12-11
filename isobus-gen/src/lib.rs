@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 pub use manufacturer::generate_manufacturer_enum;
 
-fn get_iso_export_dir() -> eyre::Result<PathBuf> {
+pub fn get_iso_export_dir() -> eyre::Result<PathBuf> {
     let dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../data/iso-export"));
     eyre::ensure!(dir.exists(), "iso-export/ directory {dir:?} does not exist");
     Ok(dir)
