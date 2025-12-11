@@ -1,14 +1,23 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+mod manufacturer;
+
+use std::path::PathBuf;
+
+fn get_iso_export_dir() -> eyre::Result<PathBuf> {
+    let dir = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../data/iso-export"));
+    eyre::ensure!(dir.exists(), "iso-export/ directory {dir:?} does not exist");
+    Ok(dir)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn get_iso_export_csv(name: &str) -> eyre::Result<PathBuf> {
+    let dir = get_iso_export_dir()?;
+    let path = dir.join(name);
+    eyre::ensure!(path.exists(), "CSV file {path:?} does not exist");
+    Ok(path)
+}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+fn get_csv_reader(name: &str) -> eyre::Result<csv::Reader<std::fs::File>> {
+    let path = get_iso_export_csv(name)?;
+    let file = std::fs::File::open(&path)?;
+    let reader = csv::Reader::from_reader(file);
+    Ok(reader)
 }
