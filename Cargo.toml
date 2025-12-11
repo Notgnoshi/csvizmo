@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["csvizmo"]
+members = ["csvizmo", "isobus", "isobus-gen"]
 
 [workspace.package]
 edition = "2024"
