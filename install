@@ -62,7 +62,7 @@ csvizmo_binaries() {
     #       .targets[] |
     #       .select(.kind == ["bin"])
     #  '
-    local -r bindir="$CSVIZMO_REPO_ROOT/src/bin"
+    local -r bindir="$CSVIZMO_REPO_ROOT/csvizmo/src/bin"
     for bin in "$bindir"/*.rs; do
         bin="$(basename -- "$bin")"
         bin="${bin%.*}"
@@ -84,7 +84,7 @@ install_csvizmo() {
 
     info "Installing Rust binaries to $prefix ..."
     local cargo_cmd=(
-        cargo install --path "$CSVIZMO_REPO_ROOT" --root "$prefix"
+        cargo install --path "$CSVIZMO_REPO_ROOT/csvizmo" --root "$prefix"
     )
     if [[ "$dry_run" = "true" ]]; then
         # NOTE: This flag is unstable
