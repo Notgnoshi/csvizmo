@@ -69,6 +69,8 @@ fn generate_manufactuerer_enum_impl(manufacturers: &[ManufacturerCsvRecord]) -> 
         *val += 1;
     }
 
+    // TODO: Add a 'Custom(u32)' variant for unknown manufacturers?
+    // TODO: 'impl Display for Manufacturer' using the original manufacturer names from the CSV
     for record in manufacturers {
         let mut name = get_normalized_manufacturer_name(record.value, &record.manufacturer);
         if counts[&name] > 1 {
