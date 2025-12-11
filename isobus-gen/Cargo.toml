@@ -7,6 +7,11 @@ rust-version.workspace = true
 description = "A code generator for the https://isobus.net/isobus/ database"
 
 [dependencies]
+codegen.workspace = true
+convert_case.workspace = true
 csv.workspace = true
 eyre.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
