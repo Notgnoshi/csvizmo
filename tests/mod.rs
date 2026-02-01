@@ -3,6 +3,7 @@ mod test_canstruct;
 mod test_csvcat;
 mod test_csvdelta;
 mod test_csvstats;
+mod test_minpath;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
