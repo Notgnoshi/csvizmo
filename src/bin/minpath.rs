@@ -89,5 +89,13 @@ fn main() -> eyre::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
+    let reader = std::io::BufReader::new(std::io::stdin().lock());
+    let paths = csvizmo::stdio::read_inputs(&args.input, reader)?;
+
+    // For now, just output them as-is
+    for path in paths {
+        println!("{}", path.display());
+    }
+
     Ok(())
 }
