@@ -128,10 +128,7 @@ where
 
     for record in records {
         for (idx, col) in indices.iter().enumerate() {
-            let value = match parse_field(&record, *col) {
-                Ok(v) => v,
-                Err(_) => f64::NAN,
-            };
+            let value = parse_field(&record, *col).unwrap_or(f64::NAN);
             values[idx].push(value);
         }
     }
