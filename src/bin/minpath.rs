@@ -71,6 +71,37 @@ struct Args {
     input: Vec<PathBuf>,
 }
 
+fn sort_and_filter(
+    inputs: &[PathBuf],
+    outputs: impl Iterator<Item = PathBuf>,
+    sort: bool,
+    select: globset::GlobSet,
+    exclude: globset::GlobSet,
+) -> impl Iterator<Item = PathBuf> {
+    // Keep track of which input generated which output so we can sort/select/exclude against the
+    // inputs. This assumes that the PathTransforms does not reorder the generated outputs.
+    let mut outputs: Vec<_> = outputs.enumerate().collect();
+    if sort {
+        // Sort and dedup by the path only, ignoring the index into the input vector
+        outputs.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+        outputs.dedup_by(|a, b| a.1 == b.1);
+    }
+
+    outputs.into_iter().filter_map(move |(idx, output)| {
+        let input = &inputs[idx];
+
+        // An empty GlobSet matches nothing
+        if select.is_empty() || select.is_match(input) {
+            if exclude.is_match(input) {
+                return None;
+            }
+            Some(output.clone())
+        } else {
+            None
+        }
+    })
+}
+
 fn main() -> eyre::Result<()> {
     let use_color = std::io::stderr().is_terminal();
     if use_color {
@@ -99,10 +130,24 @@ fn main() -> eyre::Result<()> {
         transforms.add_local(csvizmo::minpath::HomeDir);
     }
 
+    // IMPORTANT: inputs and outputs are parallel arrays.
     let outputs = transforms.transform(&inputs);
-    // TODO: --sort, --select, --exclude
-    for path in outputs {
-        println!("{path:?}");
+
+    let mut selector = globset::GlobSet::builder();
+    for pattern in &args.select {
+        selector.add(globset::Glob::new(pattern)?);
+    }
+    let selector = selector.build()?;
+
+    let mut excluder = globset::GlobSetBuilder::new();
+    for pattern in &args.exclude {
+        excluder.add(globset::Glob::new(pattern)?);
+    }
+    let excluder = excluder.build()?;
+
+    let filtered = sort_and_filter(&inputs, outputs.into_iter(), args.sort, selector, excluder);
+    for path in filtered {
+        println!("{}", path.display());
     }
 
     Ok(())
