@@ -90,11 +90,19 @@ fn main() -> eyre::Result<()> {
         .init();
 
     let reader = std::io::BufReader::new(std::io::stdin().lock());
-    let paths = csvizmo::stdio::read_inputs(&args.input, reader)?;
+    // Read once and held in memory; none of the transforms will modify the inputs since we likely
+    // need to iterate over them multiple times during different transformations.
+    let inputs = csvizmo::stdio::read_inputs(&args.input, reader)?;
 
-    // For now, just output them as-is
-    for path in paths {
-        println!("{}", path.display());
+    let mut transforms = csvizmo::minpath::PathTransforms::new();
+    if !args.no_tilde {
+        transforms.add_local(csvizmo::minpath::HomeDir);
+    }
+
+    let outputs = transforms.transform(&inputs);
+    // TODO: --sort, --select, --exclude
+    for path in outputs {
+        println!("{path:?}");
     }
 
     Ok(())

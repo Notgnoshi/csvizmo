@@ -1,6 +1,7 @@
 pub mod can;
 pub mod counter;
 pub mod csv;
+pub mod minpath;
 pub mod plot;
 pub mod stats;
 pub mod stdio;
