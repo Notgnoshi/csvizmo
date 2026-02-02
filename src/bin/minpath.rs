@@ -16,7 +16,9 @@ struct Args {
     #[clap(short = 'T', long)]
     no_tilde: bool,
 
-    /// Do not resolve relative paths
+    /// Do not try to resolve relative paths
+    ///
+    /// The filesystem won't be accessed, so not all relative paths can be resolved.
     #[clap(short = 'R', long)]
     no_resolve_relative: bool,
 
@@ -129,6 +131,17 @@ fn main() -> eyre::Result<()> {
     if !args.no_tilde {
         transforms.add_local(csvizmo::minpath::HomeDir);
     }
+    if !args.no_resolve_relative {
+        transforms.add_local(csvizmo::minpath::ResolveRelative);
+    }
+    if let Some(ancestor) = &args.relative_to {
+        transforms.add_local(csvizmo::minpath::RelativeTo::new(ancestor));
+    }
+    // TODO: Strip prefixes
+    // TODO: Smart abbreviations
+    // TODO: Strip common path prefix as the first global transform
+    // TODO: Minimal unique suffixes
+    // TODO: Single-letter directory names
 
     // IMPORTANT: inputs and outputs are parallel arrays.
     let outputs = transforms.transform(&inputs);
