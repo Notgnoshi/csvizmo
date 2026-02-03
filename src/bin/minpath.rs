@@ -128,6 +128,12 @@ fn main() -> eyre::Result<()> {
     let inputs = csvizmo::stdio::read_inputs(&args.input, reader)?;
 
     let mut transforms = csvizmo::minpath::PathTransforms::new();
+    // If a user specified prefixes to remove, remove them first before any other transforms. This
+    // is so that user-specified prefixes are applied to the untransformed paths rather than hidden
+    // intermediate transforms.
+    if !args.prefix.is_empty() {
+        transforms.add_local(csvizmo::minpath::StripPrefix::new(args.prefix.clone()));
+    }
     if !args.no_tilde {
         transforms.add_local(csvizmo::minpath::HomeDir);
     }
@@ -137,7 +143,6 @@ fn main() -> eyre::Result<()> {
     if let Some(ancestor) = &args.relative_to {
         transforms.add_local(csvizmo::minpath::RelativeTo::new(ancestor));
     }
-    // TODO: Strip prefixes
     // TODO: Smart abbreviations
     // TODO: Strip common path prefix as the first global transform
     // TODO: Minimal unique suffixes
