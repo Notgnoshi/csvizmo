@@ -147,8 +147,9 @@ fn main() -> eyre::Result<()> {
         transforms.add_local(csvizmo::minpath::SmartAbbreviate::new());
     }
     transforms.add_global(csvizmo::minpath::StripCommonPrefix);
-
-    // TODO: Minimal unique suffixes
+    if !args.no_minimal_suffix {
+        transforms.add_global(csvizmo::minpath::MinimalUniqueSuffix);
+    }
     // TODO: Single-letter directory names
 
     // IMPORTANT: inputs and outputs are parallel arrays.

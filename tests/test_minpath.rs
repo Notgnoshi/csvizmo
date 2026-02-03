@@ -44,7 +44,7 @@ fn mix_stdin_and_args() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success());
     // When args are provided, stdin should be ignored
-    assert_eq!(stdout, "~/from_args.rs\n");
+    assert_eq!(stdout, "from_args.rs\n");
 
     // Unless '-' is given as an argument
     let output = tool("minpath")
