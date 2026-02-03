@@ -143,7 +143,9 @@ fn main() -> eyre::Result<()> {
     if let Some(ancestor) = &args.relative_to {
         transforms.add_local(csvizmo::minpath::RelativeTo::new(ancestor));
     }
-    // TODO: Smart abbreviations
+    if args.smart_abbreviate {
+        transforms.add_local(csvizmo::minpath::SmartAbbreviate::new());
+    }
     // TODO: Strip common path prefix as the first global transform
     // TODO: Minimal unique suffixes
     // TODO: Single-letter directory names
