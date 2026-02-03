@@ -150,7 +150,12 @@ fn main() -> eyre::Result<()> {
     if !args.no_minimal_suffix {
         transforms.add_global(csvizmo::minpath::MinimalUniqueSuffix);
     }
-    // TODO: Single-letter directory names
+    if args.single_letter {
+        // Conceptually SingleLetter is a LocalTransform, but then it'd run before all the
+        // GlobalTransforms, which I think would open up some edge cases we don't want. So make it
+        // a GlobalTransform so that we can force it to run last.
+        transforms.add_global(csvizmo::minpath::SingleLetter);
+    }
 
     // IMPORTANT: inputs and outputs are parallel arrays.
     let outputs = transforms.transform(&inputs);
