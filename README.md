@@ -155,6 +155,25 @@ foo,bar,foo-deltas
 5,d,2
 ```
 
+## minpath
+
+Shorten file paths to the minimal unique suffix. Useful for displaying lists of files in a compact
+way while keeping them distinguishable.
+
+```sh
+$ minpath <<EOF
+/home/user/project/src/main.rs
+/home/user/project/src/lib.rs
+/home/user/project/tests/main.rs
+EOF
+
+src/main.rs
+lib.rs
+tests/main.rs
+```
+
+Multiple options are available to customize and tune the output. See `minpath --help` for details.
+
 ## can2csv
 
 Parse basic data from a CAN frame into a CSV record. Faster than `sed`, and also parses the canid.
