@@ -1,0 +1,20 @@
+[package]
+name = "csvizmo-csv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "CSV parsing utilities"
+
+[dependencies]
+csvizmo-utils.workspace = true
+clap.workspace = true
+color-eyre.workspace = true
+csv.workspace = true
+eyre.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+csvizmo-test.workspace = true
+pretty_assertions.workspace = true

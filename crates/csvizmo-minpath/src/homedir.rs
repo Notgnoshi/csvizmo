@@ -1,0 +1,53 @@
+use std::path::{Component, Path, PathBuf};
+
+use crate::transform::LocalTransform;
+
+/// Replace /home/<user> with ~
+pub struct HomeDir;
+
+impl LocalTransform for HomeDir {
+    fn transform(&self, input: &Path) -> PathBuf {
+        let mut components = input.components();
+        if let Some(Component::RootDir) = components.next()
+            && let Some(Component::Normal(home_dir)) = components.next()
+            && home_dir == "home"
+            && let Some(Component::Normal(_username)) = components.next()
+        {
+            // Collect remaining components
+            let remaining: PathBuf = components.collect();
+            let mut result = PathBuf::from("~");
+            result.push(remaining);
+            return result;
+        }
+
+        input.to_path_buf()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{PathTransforms, assert_paths_eq};
+
+    #[test]
+    fn homedir_transform() {
+        let t = PathTransforms::new().home_dir(true);
+        let inputs = [
+            "home/<user>/",
+            "/home/alice/documents",
+            "/home/bob/.local/share",
+            "/etc/config",
+            "/opt/foo/bar",
+        ];
+
+        let shortened = t.build(inputs);
+        let output: Vec<_> = shortened.shortened().collect();
+        let expected = [
+            "home/<user>/", // Relative paths are left unchanged
+            "~/documents",
+            "~/.local/share",
+            "/etc/config",
+            "/opt/foo/bar",
+        ];
+        assert_paths_eq(expected, output);
+    }
+}
