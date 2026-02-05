@@ -6,12 +6,6 @@ license.workspace = true
 publish = false
 
 [dev-dependencies]
-# Binary crates - listed here to ensure they're built before tests run
-csvizmo-can.workspace = true
-csvizmo-csv.workspace = true
-csvizmo-minpath.workspace = true
-csvizmo-stats.workspace = true
-
 assert_cmd.workspace = true
 eyre.workspace = true
 pretty_assertions.workspace = true

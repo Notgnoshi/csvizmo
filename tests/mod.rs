@@ -5,10 +5,9 @@ mod test_csvdelta;
 mod test_csvstats;
 mod test_minpath;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Output;
-use std::sync::{LazyLock, Mutex};
+use std::sync::LazyLock;
 
 use assert_cmd::Command;
 
@@ -36,23 +35,40 @@ pub fn tempfile<S: AsRef<str>>(contents: S) -> eyre::Result<tempfile::NamedTempF
     Ok(file)
 }
 
-/// Get a command to run the given tool with Cargo
-pub fn tool(name: &'static str) -> Command {
-    // XXX: Using nextest somewhat defeats this cache, because it runs each test in a separate
-    // process, so the cache has to be rebuilt each time. But having it at least makes me feel
-    // like I tried :/
-    static TOOL_PATH_CACHE: LazyLock<Mutex<HashMap<&'static str, PathBuf>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
+/// Get a command to run the given tool
+///
+/// Automatically builds workspace binaries if needed (once per process).
+pub fn tool(name: &str) -> Command {
+    // Build workspace binaries (once per process). Cargo is fast when nothing
+    // needs rebuilding and handles concurrent invocations gracefully.
+    //
+    // nextest runs each test in its own process, so we'll always hit this path with nextest, but
+    // with regular cargo-test, this will only run once. That's an unfortunate tradeoff, but I
+    // think it's necessary. It unfortunately results in cargo-test being faster than cargo-nextest
+    static BUILD_ONCE: LazyLock<()> = LazyLock::new(|| {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_dir.parent().expect("tests dir has no parent");
 
-    let mut cache = TOOL_PATH_CACHE.lock().unwrap();
-    // assert_cmd::cargo::cargo_bin is deprecated but cargo_bin! requires string literal, not &'static str
-    #[allow(deprecated)]
-    let path = cache
-        .entry(name)
-        // TODO: Support the various ./scripts/ as well
-        .or_insert_with(|| assert_cmd::cargo::cargo_bin(name));
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--workspace", "--bins"])
+            .current_dir(workspace_root)
+            .status()
+            .expect("Failed to run cargo build");
+        assert!(status.success(), "cargo build --workspace --bins failed");
+    });
+    *BUILD_ONCE; // dereference to trigger the one-time build
 
-    let mut cmd = Command::new(path);
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("tests dir has no parent")
+        .to_path_buf();
+
+    let target_dir = std::env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| workspace_root.join("target"));
+
+    let path = target_dir.join("debug").join(name);
+    let mut cmd = Command::new(&path);
     cmd.arg("--log-level=TRACE");
     cmd
 }
