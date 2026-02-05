@@ -7,7 +7,7 @@ mod single_letter;
 mod transform;
 mod unique_suffix;
 
-pub use transform::PathTransforms;
+pub use transform::{PathTransforms, ShortenedPaths};
 
 #[cfg(test)]
 #[track_caller]

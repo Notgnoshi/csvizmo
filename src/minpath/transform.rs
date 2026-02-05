@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use indexmap::IndexMap;
+
 use super::abbreviate::SmartAbbreviate;
 use super::common_prefix::StripCommonPrefix;
 use super::homedir::HomeDir;
@@ -9,13 +11,91 @@ use super::single_letter::SingleLetter;
 use super::unique_suffix::MinimalUniqueSuffix;
 
 /// Simple path transform that doesn't require global knowledge of all input paths
-pub trait LocalTransform {
+pub(crate) trait LocalTransform {
     fn transform(&self, input: &Path) -> PathBuf;
 }
 
 /// Complex path transform that requires global knowledge of all input paths
-pub trait GlobalTransform {
+pub(crate) trait GlobalTransform {
     fn transform(&self, inputs: &[PathBuf]) -> Vec<PathBuf>;
+}
+
+/// A mapping from original paths to their shortened forms
+///
+/// Created by [`PathTransforms::build`]. Provides O(1) lookup by original path
+/// while preserving the original input order when iterating. Duplicate input
+/// paths are deduplicated (only the first occurrence is kept).
+///
+/// ```
+/// use csvizmo::minpath::PathTransforms;
+///
+/// let paths = vec![
+///     "/home/alice/project/src/main.rs",
+///     "/home/alice/project/src/lib.rs",
+/// ];
+///
+/// let shortened = PathTransforms::new()
+///     .home_dir()
+///     .minimal_unique_suffix()
+///     .build(&paths);
+///
+/// // Look up individual paths
+/// assert_eq!(shortened.shorten("/home/alice/project/src/main.rs").to_str(), Some("main.rs"));
+///
+/// // Iterate in original order
+/// for (original, short) in shortened.iter() {
+///     println!("{} -> {}", original.display(), short.display());
+/// }
+/// ```
+pub struct ShortenedPaths {
+    mapping: IndexMap<PathBuf, PathBuf>,
+}
+
+impl ShortenedPaths {
+    fn new(originals: Vec<PathBuf>, shortened: Vec<PathBuf>) -> Self {
+        debug_assert_eq!(originals.len(), shortened.len());
+        let mapping = originals.into_iter().zip(shortened).collect();
+        Self { mapping }
+    }
+
+    /// Returns the shortened form of a path, or the original if not registered
+    ///
+    /// This is the primary lookup method. It never fails - if the path wasn't
+    /// in the original input set, it returns the path unchanged.
+    pub fn shorten<'a, P: AsRef<Path> + ?Sized>(&'a self, path: &'a P) -> &'a Path {
+        let path = path.as_ref();
+        self.mapping.get(path).map(|p| p.as_path()).unwrap_or(path)
+    }
+
+    /// Returns the shortened form of a path if it was registered
+    pub fn get<P: AsRef<Path>>(&self, path: P) -> Option<&Path> {
+        self.mapping.get(path.as_ref()).map(|p| p.as_path())
+    }
+
+    /// Iterate over (original, shortened) pairs in input order (duplicates removed)
+    pub fn iter(&self) -> impl Iterator<Item = (&Path, &Path)> {
+        self.mapping.iter().map(|(k, v)| (k.as_path(), v.as_path()))
+    }
+
+    /// Iterate over original paths in input order (duplicates removed)
+    pub fn originals(&self) -> impl Iterator<Item = &Path> {
+        self.mapping.keys().map(|p| p.as_path())
+    }
+
+    /// Iterate over shortened paths in input order (duplicates removed)
+    pub fn shortened(&self) -> impl Iterator<Item = &Path> {
+        self.mapping.values().map(|p| p.as_path())
+    }
+
+    /// Returns the number of unique paths
+    pub fn len(&self) -> usize {
+        self.mapping.len()
+    }
+
+    /// Returns true if there are no paths
+    pub fn is_empty(&self) -> bool {
+        self.mapping.is_empty()
+    }
 }
 
 /// A collection of local and global path transforms
@@ -34,7 +114,10 @@ pub trait GlobalTransform {
 ///     .home_dir()
 ///     .strip_common_prefix()
 ///     .minimal_unique_suffix()
-///     .transform(&paths);
+///     .build(&paths);
+///
+/// // Query individual paths
+/// println!("{}", shortened.shorten("/home/alice/project/src/main.rs").display());
 /// ```
 #[derive(Default)]
 pub struct PathTransforms {
@@ -123,11 +206,15 @@ impl PathTransforms {
     // Execution
     // -------------------------------------------------------------------------
 
-    /// Apply all configured transforms to the input paths
+    /// Apply all configured transforms and return a lookup structure
+    ///
+    /// This is the primary entry point for library users. It computes the
+    /// shortened forms for all input paths and returns a [`ShortenedPaths`]
+    /// that supports O(1) lookup while preserving input order for iteration.
     ///
     /// Local transforms are applied first (in the order they were added),
     /// then global transforms (in the order they were added).
-    pub fn transform<I, P>(&self, inputs: I) -> Vec<PathBuf>
+    pub fn build<I, P>(&self, inputs: I) -> ShortenedPaths
     where
         I: IntoIterator<Item = P>,
         P: AsRef<Path>,
@@ -137,6 +224,12 @@ impl PathTransforms {
             .map(|p| p.as_ref().to_path_buf())
             .collect();
 
+        let shortened = self.apply(&inputs);
+        ShortenedPaths::new(inputs, shortened)
+    }
+
+    /// Internal: apply transforms to a vec of paths
+    fn apply(&self, inputs: &[PathBuf]) -> Vec<PathBuf> {
         // Apply local transforms first
         let mut current: Vec<_> = inputs
             .iter()

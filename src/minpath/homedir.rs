@@ -41,7 +41,8 @@ mod tests {
             "/opt/foo/bar",
         ];
 
-        let output = t.transform(inputs);
+        let shortened = t.build(inputs);
+        let output: Vec<_> = shortened.shortened().collect();
         let expected = [
             "home/<user>/", // Relative paths are left unchanged
             "~/documents",

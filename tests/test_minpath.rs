@@ -176,8 +176,8 @@ fn preserve_input_order() {
         .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success());
-    // Unsorted, can contain duplicates
-    assert_eq!(stdout, "c.rs\nb.rs\na.rs\nb.rs\n");
+    // Unsorted, duplicates removed (first occurrence kept)
+    assert_eq!(stdout, "c.rs\nb.rs\na.rs\n");
 }
 
 #[test]

@@ -1,7 +1,8 @@
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
+use csvizmo::minpath::ShortenedPaths;
 
 /// Given a list of file paths, shrink each of them to the shortest unique path
 ///
@@ -73,35 +74,34 @@ struct Args {
     input: Vec<PathBuf>,
 }
 
-fn sort_and_filter(
-    inputs: &[PathBuf],
-    outputs: impl Iterator<Item = PathBuf>,
+fn sort_and_filter<'a>(
+    shortened: &'a ShortenedPaths,
     sort: bool,
-    select: globset::GlobSet,
-    exclude: globset::GlobSet,
-) -> impl Iterator<Item = PathBuf> {
-    // Keep track of which input generated which output so we can sort/select/exclude against the
-    // inputs. This assumes that the PathTransforms does not reorder the generated outputs.
-    let mut outputs: Vec<_> = outputs.enumerate().collect();
+    select: &'a globset::GlobSet,
+    exclude: &'a globset::GlobSet,
+) -> Vec<&'a Path> {
+    let mut pairs: Vec<_> = shortened.iter().collect();
+
     if sort {
-        // Sort and dedup by the path only, ignoring the index into the input vector
-        outputs.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-        outputs.dedup_by(|a, b| a.1 == b.1);
+        // Sort and dedup by the shortened path
+        pairs.sort_unstable_by(|a, b| a.1.cmp(b.1));
+        pairs.dedup_by(|a, b| a.1 == b.1);
     }
 
-    outputs.into_iter().filter_map(move |(idx, output)| {
-        let input = &inputs[idx];
-
-        // An empty GlobSet matches nothing
-        if select.is_empty() || select.is_match(input) {
-            if exclude.is_match(input) {
-                return None;
+    pairs
+        .into_iter()
+        .filter_map(|(original, short)| {
+            // An empty GlobSet matches nothing
+            if select.is_empty() || select.is_match(original) {
+                if exclude.is_match(original) {
+                    return None;
+                }
+                Some(short)
+            } else {
+                None
             }
-            Some(output.clone())
-        } else {
-            None
-        }
-    })
+        })
+        .collect()
 }
 
 fn main() -> eyre::Result<()> {
@@ -157,8 +157,7 @@ fn main() -> eyre::Result<()> {
         transforms = transforms.single_letter();
     }
 
-    // IMPORTANT: inputs and outputs are parallel arrays.
-    let outputs = transforms.transform(&inputs);
+    let shortened = transforms.build(&inputs);
 
     let mut selector = globset::GlobSet::builder();
     for pattern in &args.select {
@@ -172,7 +171,7 @@ fn main() -> eyre::Result<()> {
     }
     let excluder = excluder.build()?;
 
-    let filtered = sort_and_filter(&inputs, outputs.into_iter(), args.sort, selector, excluder);
+    let filtered = sort_and_filter(&shortened, args.sort, &selector, &excluder);
     for path in filtered {
         println!("{}", path.display());
     }
