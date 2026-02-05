@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*", "tests"]
+members = ["crates/*"]
 resolver = "3"
 
 [workspace.package]
@@ -38,5 +38,6 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 # Dev dependencies
 assert_cmd = { version = "2.1.1", features = ["color-auto"] }
+csvizmo-test = { path = "crates/csvizmo-test" }
 ctor = "0.6"
 pretty_assertions = "1.4.1"

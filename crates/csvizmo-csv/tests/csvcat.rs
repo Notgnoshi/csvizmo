@@ -1,10 +1,9 @@
+use csvizmo_test::{CommandExt, tempfile, tool};
 use pretty_assertions::assert_eq;
-
-use crate::{CommandExt, tempfile, tool};
 
 #[test]
 fn cat_nothing() {
-    let output = tool("csvcat").captured_output().unwrap();
+    let output = tool!("csvcat").captured_output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success());
     assert_eq!(stdout, "");
@@ -13,7 +12,10 @@ fn cat_nothing() {
 #[test]
 fn cat_from_stdin() {
     let input = "foo,bar,baz\n";
-    let output = tool("csvcat").write_stdin(input).captured_output().unwrap();
+    let output = tool!("csvcat")
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success());
     assert_eq!(stdout, input);
@@ -25,7 +27,7 @@ fn cat_no_header() {
     let input_file = tempfile("a,b,c\n").unwrap();
     let expected = "1,2,3\na,b,c\n";
 
-    let output = tool("csvcat")
+    let output = tool!("csvcat")
         .arg("--no-header")
         .arg("-")
         .arg(input_file.path())
@@ -44,7 +46,7 @@ fn cat_with_header() {
     let input_file = tempfile("FOO,BAR,BAZ\n1,2,3\n").unwrap();
     let expected = "foo,bar,baz\na,b,c\n1,2,3\n";
 
-    let output = tool("csvcat")
+    let output = tool!("csvcat")
         .arg("-")
         .arg(input_file.path())
         .write_stdin(input_stdin)
@@ -60,7 +62,10 @@ fn cat_ragged_columns() {
     let input = "1,2,3\n1,2,3,4\n";
     let expected = "1,2,3\n";
 
-    let output = tool("csvcat").write_stdin(input).captured_output().unwrap();
+    let output = tool!("csvcat")
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         !output.status.success(),
@@ -69,7 +74,7 @@ fn cat_ragged_columns() {
     assert_eq!(expected, stdout);
 
     let expected = "1,2,3\n1,2,3,4\n";
-    let output = tool("csvcat")
+    let output = tool!("csvcat")
         .arg("--allow-ragged")
         .write_stdin(input)
         .captured_output()
@@ -82,7 +87,7 @@ fn cat_ragged_columns() {
     let file2 = tempfile("a,b,c,d\n").unwrap();
     let expected = "1,2,3\n";
 
-    let output = tool("csvcat")
+    let output = tool!("csvcat")
         .arg("--no-header")
         .arg(file1.path())
         .arg(file2.path())
@@ -96,7 +101,7 @@ fn cat_ragged_columns() {
     assert_eq!(expected, stdout);
 
     let expected = "1,2,3\na,b,c,d\n";
-    let output = tool("csvcat")
+    let output = tool!("csvcat")
         .arg("--allow-ragged")
         .arg("--no-header")
         .arg(file1.path())

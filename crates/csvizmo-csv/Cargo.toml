@@ -14,3 +14,7 @@ csv.workspace = true
 eyre.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+csvizmo-test.workspace = true
+pretty_assertions.workspace = true

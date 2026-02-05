@@ -1,6 +1,5 @@
+use csvizmo_test::{CommandExt, tool};
 use pretty_assertions::assert_eq;
-
-use crate::{CommandExt, tool};
 
 #[test]
 fn test_column_name_or_index() {
@@ -19,14 +18,14 @@ fn test_column_name_or_index() {
     ";
 
     // Try the column name
-    let mut cmd = tool("csvdelta");
+    let mut cmd = tool!("csvdelta");
     cmd.arg("--column").arg("header1");
     let output = cmd.write_stdin(input).captured_output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, expected);
 
     // Try a column index
-    let mut cmd = tool("csvdelta");
+    let mut cmd = tool!("csvdelta");
     cmd.arg("--column").arg("0");
     let output = cmd.write_stdin(input).captured_output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -44,7 +43,7 @@ fn test_column_name_or_index() {
         1,b,1\n\
         2,c,1\n\
     ";
-    let mut cmd = tool("csvdelta");
+    let mut cmd = tool!("csvdelta");
     cmd.arg("--column").arg("0").arg("--no-header");
     let output = cmd.write_stdin(input).captured_output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -70,7 +69,7 @@ fn test_center_mean() {
         4,2\n\
     ";
 
-    let mut cmd = tool("csvdelta");
+    let mut cmd = tool!("csvdelta");
     cmd.arg("--column")
         .arg("0")
         .arg("--center-mean")
@@ -98,7 +97,7 @@ fn test_center_first() {
         4,-2\n\
     ";
 
-    let mut cmd = tool("csvdelta");
+    let mut cmd = tool!("csvdelta");
     cmd.arg("--column")
         .arg("0")
         .arg("--center-first")
@@ -124,7 +123,7 @@ fn test_center_value() {
         4,2\n\
     ";
 
-    let mut cmd = tool("csvdelta");
+    let mut cmd = tool!("csvdelta");
     cmd.arg("--column")
         .arg("0")
         .arg("--center-value")
@@ -156,7 +155,7 @@ fn test_missing_values() {
         2,f,-6\n\
     ";
 
-    let mut cmd = tool("csvdelta");
+    let mut cmd = tool!("csvdelta");
     cmd.arg("--column").arg("0").arg("--no-header");
     let output = cmd.write_stdin(input).captured_output().unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);

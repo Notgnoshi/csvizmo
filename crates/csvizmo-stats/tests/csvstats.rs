@@ -1,6 +1,5 @@
+use csvizmo_test::{CommandExt, tool};
 use pretty_assertions::assert_eq;
-
-use crate::{CommandExt, tool};
 
 #[test]
 fn test_csvstats_no_plotting() {
@@ -40,7 +39,7 @@ fn test_csvstats_no_plotting() {
         \"stdin\",\"rolls-session-2\",21,3,2,5,18,14,9.571428571428573,5.803823252952202,5,8,14\n\
     ";
 
-    let mut cmd = tool("csvstats");
+    let mut cmd = tool!("csvstats");
     cmd.arg("--column")
         .arg("rolls-session-1")
         .arg("--column")
