@@ -10,14 +10,20 @@ use super::prefix::StripPrefix;
 use super::single_letter::SingleLetter;
 use super::unique_suffix::MinimalUniqueSuffix;
 
-/// Simple path transform that doesn't require global knowledge of all input paths
+/// Transform that operates on each path independently
 pub(crate) trait LocalTransform {
     fn transform(&self, input: &Path) -> PathBuf;
 }
 
-/// Complex path transform that requires global knowledge of all input paths
+/// Transform that requires knowledge of all paths
 pub(crate) trait GlobalTransform {
     fn transform(&self, inputs: &[PathBuf]) -> Vec<PathBuf>;
+}
+
+/// A transform that can be either local or global
+enum Transform {
+    Local(Box<dyn LocalTransform>),
+    Global(Box<dyn GlobalTransform>),
 }
 
 /// A mapping from original paths to their shortened forms
@@ -98,9 +104,22 @@ impl ShortenedPaths {
     }
 }
 
-/// A collection of local and global path transforms
+/// A collection of path transforms for shortening file paths.
 ///
-/// Use the fluent builder methods to configure which transforms to apply:
+/// Transforms execute in the order they are added to the builder.
+///
+/// ## Available transforms
+///
+/// - [`home_dir`](Self::home_dir) - replace `/home/<user>/...` with `~/...`
+/// - [`resolve_relative`](Self::resolve_relative) - normalize `.` and `..` components
+/// - [`relative_to`](Self::relative_to) - make paths relative to a base
+/// - [`strip_prefix`](Self::strip_prefix) - remove specified path prefixes
+/// - [`smart_abbreviate`](Self::smart_abbreviate) - abbreviate `Documents` → `docs`, etc.
+/// - [`strip_common_prefix`](Self::strip_common_prefix) - remove prefix shared by all paths
+/// - [`minimal_unique_suffix`](Self::minimal_unique_suffix) - shorten to unique suffix
+/// - [`single_letter`](Self::single_letter) - abbreviate directories to single letters
+///
+/// ## Example
 ///
 /// ```
 /// use csvizmo::minpath::PathTransforms;
@@ -121,8 +140,7 @@ impl ShortenedPaths {
 /// ```
 #[derive(Default)]
 pub struct PathTransforms {
-    local: Vec<Box<dyn LocalTransform>>,
-    global: Vec<Box<dyn GlobalTransform>>,
+    transforms: Vec<Transform>,
 }
 
 impl PathTransforms {
@@ -131,16 +149,12 @@ impl PathTransforms {
     }
 
     fn add_local<T: LocalTransform + 'static>(&mut self, tr: T) {
-        self.local.push(Box::new(tr));
+        self.transforms.push(Transform::Local(Box::new(tr)));
     }
 
     fn add_global<T: GlobalTransform + 'static>(&mut self, tr: T) {
-        self.global.push(Box::new(tr));
+        self.transforms.push(Transform::Global(Box::new(tr)));
     }
-
-    // -------------------------------------------------------------------------
-    // Local transforms (applied per-path, before global transforms)
-    // -------------------------------------------------------------------------
 
     /// Replace `/home/<user>/...` paths with `~/...`
     pub fn home_dir(mut self, enabled: bool) -> Self {
@@ -190,10 +204,6 @@ impl PathTransforms {
         self
     }
 
-    // -------------------------------------------------------------------------
-    // Global transforms (require knowledge of all paths, applied after local)
-    // -------------------------------------------------------------------------
-
     /// Remove the common prefix shared by all paths
     pub fn strip_common_prefix(mut self, enabled: bool) -> Self {
         if enabled {
@@ -218,18 +228,13 @@ impl PathTransforms {
         self
     }
 
-    // -------------------------------------------------------------------------
-    // Execution
-    // -------------------------------------------------------------------------
-
     /// Apply all configured transforms and return a lookup structure
     ///
     /// This is the primary entry point for library users. It computes the
     /// shortened forms for all input paths and returns a [`ShortenedPaths`]
     /// that supports O(1) lookup while preserving input order for iteration.
     ///
-    /// Local transforms are applied first (in the order they were added),
-    /// then global transforms (in the order they were added).
+    /// Transforms are applied in the order they were added to the builder.
     pub fn build<I, P>(&self, inputs: I) -> ShortenedPaths
     where
         I: IntoIterator<Item = P>,
@@ -244,23 +249,14 @@ impl PathTransforms {
         ShortenedPaths::new(inputs, shortened)
     }
 
-    /// Internal: apply transforms to a vec of paths
     fn apply(&self, inputs: &[PathBuf]) -> Vec<PathBuf> {
-        // Apply local transforms first
-        let mut current: Vec<_> = inputs
-            .iter()
-            .map(|p| {
-                let mut result = p.clone();
-                for tr in &self.local {
-                    result = tr.transform(&result);
-                }
-                result
-            })
-            .collect();
+        let mut current: Vec<PathBuf> = inputs.to_vec();
 
-        // Then apply global transforms
-        for tr in &self.global {
-            current = tr.transform(&current);
+        for transform in &self.transforms {
+            current = match transform {
+                Transform::Local(tr) => current.iter().map(|p| tr.transform(p)).collect(),
+                Transform::Global(tr) => tr.transform(&current),
+            };
         }
 
         current
