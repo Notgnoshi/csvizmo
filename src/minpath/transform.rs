@@ -35,8 +35,8 @@ pub(crate) trait GlobalTransform {
 /// ];
 ///
 /// let shortened = PathTransforms::new()
-///     .home_dir()
-///     .minimal_unique_suffix()
+///     .home_dir(true)
+///     .minimal_unique_suffix(true)
 ///     .build(&paths);
 ///
 /// // Look up individual paths
@@ -111,9 +111,9 @@ impl ShortenedPaths {
 /// ];
 ///
 /// let shortened = PathTransforms::new()
-///     .home_dir()
-///     .strip_common_prefix()
-///     .minimal_unique_suffix()
+///     .home_dir(true)
+///     .strip_common_prefix(true)
+///     .minimal_unique_suffix(true)
 ///     .build(&paths);
 ///
 /// // Query individual paths
@@ -143,20 +143,26 @@ impl PathTransforms {
     // -------------------------------------------------------------------------
 
     /// Replace `/home/<user>/...` paths with `~/...`
-    pub fn home_dir(mut self) -> Self {
-        self.add_local(HomeDir);
+    pub fn home_dir(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.add_local(HomeDir);
+        }
         self
     }
 
     /// Normalize paths by resolving `.` and `..` components without filesystem access
-    pub fn resolve_relative(mut self) -> Self {
-        self.add_local(ResolveRelative);
+    pub fn resolve_relative(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.add_local(ResolveRelative);
+        }
         self
     }
 
-    /// Make paths relative to the given base path
-    pub fn relative_to<P: AsRef<Path>>(mut self, base: P) -> Self {
-        self.add_local(RelativeTo::new(base));
+    /// Make paths relative to the given base path (no-op if `None`)
+    pub fn relative_to<P: AsRef<Path>>(mut self, base: Option<P>) -> Self {
+        if let Some(base) = base {
+            self.add_local(RelativeTo::new(base));
+        }
         self
     }
 
@@ -170,13 +176,17 @@ impl PathTransforms {
             .into_iter()
             .map(|p| p.as_ref().to_path_buf())
             .collect();
-        self.add_local(StripPrefix::new(prefixes));
+        if !prefixes.is_empty() {
+            self.add_local(StripPrefix::new(prefixes));
+        }
         self
     }
 
     /// Abbreviate common directory names (e.g., `Documents` → `docs`, `source` → `src`)
-    pub fn smart_abbreviate(mut self) -> Self {
-        self.add_local(SmartAbbreviate::new());
+    pub fn smart_abbreviate(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.add_local(SmartAbbreviate::new());
+        }
         self
     }
 
@@ -185,20 +195,26 @@ impl PathTransforms {
     // -------------------------------------------------------------------------
 
     /// Remove the common prefix shared by all paths
-    pub fn strip_common_prefix(mut self) -> Self {
-        self.add_global(StripCommonPrefix);
+    pub fn strip_common_prefix(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.add_global(StripCommonPrefix);
+        }
         self
     }
 
     /// Shorten paths to the minimal unique suffix (filename, or more if needed to disambiguate)
-    pub fn minimal_unique_suffix(mut self) -> Self {
-        self.add_global(MinimalUniqueSuffix);
+    pub fn minimal_unique_suffix(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.add_global(MinimalUniqueSuffix);
+        }
         self
     }
 
     /// Abbreviate directory names to single letters (e.g., `src/utils/parse.rs` → `s/u/parse.rs`)
-    pub fn single_letter(mut self) -> Self {
-        self.add_global(SingleLetter);
+    pub fn single_letter(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.add_global(SingleLetter);
+        }
         self
     }
 

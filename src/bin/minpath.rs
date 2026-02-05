@@ -127,35 +127,17 @@ fn main() -> eyre::Result<()> {
     // need to iterate over them multiple times during different transformations.
     let inputs = csvizmo::stdio::read_inputs(&args.input, reader)?;
 
-    let mut transforms = csvizmo::minpath::PathTransforms::new();
-    // If a user specified prefixes to remove, remove them first before any other transforms. This
-    // is so that user-specified prefixes are applied to the untransformed paths rather than hidden
-    // intermediate transforms.
-    if !args.prefix.is_empty() {
-        transforms = transforms.strip_prefix(args.prefix.clone());
-    }
-    if !args.no_tilde {
-        transforms = transforms.home_dir();
-    }
-    if !args.no_resolve_relative {
-        transforms = transforms.resolve_relative();
-    }
-    if let Some(ancestor) = &args.relative_to {
-        transforms = transforms.relative_to(ancestor);
-    }
-    if args.smart_abbreviate {
-        transforms = transforms.smart_abbreviate();
-    }
-    transforms = transforms.strip_common_prefix();
-    if !args.no_minimal_suffix {
-        transforms = transforms.minimal_unique_suffix();
-    }
-    if args.single_letter {
-        // Conceptually SingleLetter is a LocalTransform, but then it'd run before all the
-        // GlobalTransforms, which I think would open up some edge cases we don't want. So make it
-        // a GlobalTransform so that we can force it to run last.
-        transforms = transforms.single_letter();
-    }
+    // User-specified prefixes are removed first, before any other transforms, so they are applied
+    // to the untransformed paths rather than hidden intermediate transforms.
+    let transforms = csvizmo::minpath::PathTransforms::new()
+        .strip_prefix(args.prefix.clone())
+        .home_dir(!args.no_tilde)
+        .resolve_relative(!args.no_resolve_relative)
+        .relative_to(args.relative_to.as_ref())
+        .smart_abbreviate(args.smart_abbreviate)
+        .strip_common_prefix(true)
+        .minimal_unique_suffix(!args.no_minimal_suffix)
+        .single_letter(args.single_letter);
 
     let shortened = transforms.build(&inputs);
 

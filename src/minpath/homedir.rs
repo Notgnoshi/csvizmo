@@ -32,7 +32,7 @@ mod tests {
 
     #[test]
     fn homedir_transform() {
-        let t = PathTransforms::new().home_dir();
+        let t = PathTransforms::new().home_dir(true);
         let inputs = [
             "home/<user>/",
             "/home/alice/documents",
