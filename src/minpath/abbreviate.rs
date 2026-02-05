@@ -34,11 +34,6 @@ impl SmartAbbreviate {
         }
     }
 
-    pub fn with_abbreviation(mut self, from: &'static str, to: &'static str) -> Self {
-        self.abbreviations.insert(from, to);
-        self
-    }
-
     fn abbreviate_component(&self, component: &str) -> Option<&str> {
         self.abbreviations
             .get(component.to_lowercase().as_str())
@@ -91,12 +86,5 @@ mod tests {
         let tr = SmartAbbreviate::new();
         let result = tr.transform(Path::new("/home/user/projects/foo/bar.rs"));
         assert_eq!(result, Path::new("/home/user/projects/foo/bar.rs"));
-    }
-
-    #[test]
-    fn custom_abbreviation() {
-        let tr = SmartAbbreviate::new().with_abbreviation("kubernetes", "k8s");
-        let result = tr.transform(Path::new("/home/user/kubernetes/config.yaml"));
-        assert_eq!(result, Path::new("/home/user/k8s/config.yaml"));
     }
 }

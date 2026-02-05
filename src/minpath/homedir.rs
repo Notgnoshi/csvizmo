@@ -28,12 +28,11 @@ impl LocalTransform for HomeDir {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::minpath::transform::{PathTransforms, assert_paths_eq};
+    use crate::minpath::{PathTransforms, assert_paths_eq};
 
     #[test]
     fn homedir_transform() {
-        let t = PathTransforms::from_local(HomeDir);
+        let t = PathTransforms::new().home_dir();
         let inputs = [
             "home/<user>/",
             "/home/alice/documents",

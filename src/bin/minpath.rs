@@ -132,29 +132,29 @@ fn main() -> eyre::Result<()> {
     // is so that user-specified prefixes are applied to the untransformed paths rather than hidden
     // intermediate transforms.
     if !args.prefix.is_empty() {
-        transforms.add_local(csvizmo::minpath::StripPrefix::new(args.prefix.clone()));
+        transforms = transforms.strip_prefix(args.prefix.clone());
     }
     if !args.no_tilde {
-        transforms.add_local(csvizmo::minpath::HomeDir);
+        transforms = transforms.home_dir();
     }
     if !args.no_resolve_relative {
-        transforms.add_local(csvizmo::minpath::ResolveRelative);
+        transforms = transforms.resolve_relative();
     }
     if let Some(ancestor) = &args.relative_to {
-        transforms.add_local(csvizmo::minpath::RelativeTo::new(ancestor));
+        transforms = transforms.relative_to(ancestor);
     }
     if args.smart_abbreviate {
-        transforms.add_local(csvizmo::minpath::SmartAbbreviate::new());
+        transforms = transforms.smart_abbreviate();
     }
-    transforms.add_global(csvizmo::minpath::StripCommonPrefix);
+    transforms = transforms.strip_common_prefix();
     if !args.no_minimal_suffix {
-        transforms.add_global(csvizmo::minpath::MinimalUniqueSuffix);
+        transforms = transforms.minimal_unique_suffix();
     }
     if args.single_letter {
         // Conceptually SingleLetter is a LocalTransform, but then it'd run before all the
         // GlobalTransforms, which I think would open up some edge cases we don't want. So make it
         // a GlobalTransform so that we can force it to run last.
-        transforms.add_global(csvizmo::minpath::SingleLetter);
+        transforms = transforms.single_letter();
     }
 
     // IMPORTANT: inputs and outputs are parallel arrays.
