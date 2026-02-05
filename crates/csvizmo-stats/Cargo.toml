@@ -1,0 +1,23 @@
+[package]
+name = "csvizmo-stats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Statistical and plotting utilities"
+
+[dependencies]
+csvizmo-csv.workspace = true
+csvizmo-utils.workspace = true
+clap.workspace = true
+color-eyre.workspace = true
+csv.workspace = true
+eyre.workspace = true
+gnuplot.workspace = true
+itertools.workspace = true
+itertools-num.workspace = true
+kernel-density-estimation.workspace = true
+ordered-float.workspace = true
+tempfile.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

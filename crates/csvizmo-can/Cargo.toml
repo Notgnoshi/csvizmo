@@ -1,0 +1,22 @@
+[package]
+name = "csvizmo-can"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "CAN bus message parsing and handling"
+
+[dependencies]
+csvizmo-utils.workspace = true
+byteorder.workspace = true
+clap.workspace = true
+color-eyre.workspace = true
+csv.workspace = true
+eyre.workspace = true
+hex.workspace = true
+serde.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
