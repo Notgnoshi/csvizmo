@@ -8,5 +8,13 @@ rust-version.workspace = true
 description = "Dependency graph utilities"
 
 [dependencies]
+clap.workspace = true
+color-eyre.workspace = true
+csvizmo-utils.workspace = true
+eyre.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
+csvizmo-test.workspace = true
+pretty_assertions.workspace = true
