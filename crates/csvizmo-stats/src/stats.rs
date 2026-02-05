@@ -12,7 +12,7 @@ pub fn median(data: &[f64]) -> f64 {
     }
 
     let mid = data.len() / 2;
-    if data.len() % 2 == 0 {
+    if data.len().is_multiple_of(2) {
         average(data[mid - 1], data[mid])
     } else {
         data[mid]
@@ -47,7 +47,7 @@ fn quartiles_impl(data: &[f64]) -> Option<(f64, f64, f64)> {
     }
 
     let mid = data.len() / 2;
-    if data.len() % 2 == 0 {
+    if data.len().is_multiple_of(2) {
         Some((median(&data[0..mid]), median(data), median(&data[mid..])))
     } else {
         Some((
@@ -253,17 +253,17 @@ impl OnlineStats {
     {
         let mut stats = Self::new(filename, colname);
         for sample in data {
-            if let Some(min) = min {
-                if *sample < min {
-                    stats.num_filtered += 1;
-                    continue;
-                }
+            if let Some(min) = min
+                && *sample < min
+            {
+                stats.num_filtered += 1;
+                continue;
             }
-            if let Some(max) = max {
-                if *sample > max {
-                    stats.num_filtered += 1;
-                    continue;
-                }
+            if let Some(max) = max
+                && *sample > max
+            {
+                stats.num_filtered += 1;
+                continue;
             }
             stats.update(*sample);
         }

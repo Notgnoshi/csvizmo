@@ -8,18 +8,16 @@ pub struct HomeDir;
 impl LocalTransform for HomeDir {
     fn transform(&self, input: &Path) -> PathBuf {
         let mut components = input.components();
-        if let Some(Component::RootDir) = components.next() {
-            if let Some(Component::Normal(home_dir)) = components.next() {
-                if home_dir == "home" {
-                    if let Some(Component::Normal(_username)) = components.next() {
-                        // Collect remaining components
-                        let remaining: PathBuf = components.collect();
-                        let mut result = PathBuf::from("~");
-                        result.push(remaining);
-                        return result;
-                    }
-                }
-            }
+        if let Some(Component::RootDir) = components.next()
+            && let Some(Component::Normal(home_dir)) = components.next()
+            && home_dir == "home"
+            && let Some(Component::Normal(_username)) = components.next()
+        {
+            // Collect remaining components
+            let remaining: PathBuf = components.collect();
+            let mut result = PathBuf::from("~");
+            result.push(remaining);
+            return result;
         }
 
         input.to_path_buf()
