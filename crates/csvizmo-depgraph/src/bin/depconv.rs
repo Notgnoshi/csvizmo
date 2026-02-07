@@ -1,10 +1,9 @@
 use std::io::{IsTerminal, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use csvizmo_depgraph::{InputFormat, OutputFormat};
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
-use eyre::WrapErr;
 
 /// Dependency graph format converter.
 ///
@@ -54,38 +53,57 @@ fn main() -> eyre::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    let mut input = get_input_reader(&args.input)?;
+    // Normalize `-` to None — it means stdio, not a file path.
+    let is_stdio = |p: &PathBuf| p.as_os_str() == "-";
+    let input_path = args.input.filter(|p| !is_stdio(p));
+    let output_path = args.output.filter(|p| !is_stdio(p));
+
+    let mut input = get_input_reader(&input_path)?;
     let mut input_text = String::new();
     input.read_to_string(&mut input_text)?;
 
+    let from = resolve_input_format(args.from, input_path.as_deref(), &input_text)?;
+
     if args.detect {
-        // TODO: implement format auto-detection
-        eyre::bail!("--detect not yet implemented");
+        println!("{from}");
+        return Ok(());
     }
 
-    let from = match args.from {
-        Some(f) => f,
-        None => match &args.input {
-            Some(path) => {
-                InputFormat::try_from(path.as_path()).wrap_err("cannot detect input format")?
-            }
-            None => eyre::bail!("cannot detect input format; use --from"),
-        },
-    };
-    let to = match args.to {
-        Some(t) => t,
-        None => match &args.output {
-            Some(path) => {
-                OutputFormat::try_from(path.as_path()).wrap_err("cannot detect output format")?
-            }
-            None => OutputFormat::Dot,
-        },
-    };
+    let to = resolve_output_format(args.to, output_path.as_deref());
 
     let graph = csvizmo_depgraph::parse::parse(from, &input_text)?;
 
-    let mut output = get_output_writer(&args.output)?;
+    let mut output = get_output_writer(&output_path)?;
     csvizmo_depgraph::emit::emit(to, &graph, &mut output)?;
 
     Ok(())
+}
+
+/// Resolve input format: explicit flag > file extension > content detection.
+fn resolve_input_format(
+    flag: Option<InputFormat>,
+    path: Option<&Path>,
+    input: &str,
+) -> eyre::Result<InputFormat> {
+    if let Some(f) = flag {
+        return Ok(f);
+    }
+    let ext_err = match path.map(InputFormat::try_from) {
+        Some(Ok(f)) => return Ok(f),
+        Some(Err(e)) => Some(e),
+        None => None,
+    };
+    if let Some(f) = csvizmo_depgraph::detect::detect(input) {
+        return Ok(f);
+    }
+    match ext_err {
+        Some(e) => Err(e.wrap_err("cannot detect input format; use --from")),
+        None => eyre::bail!("cannot detect input format; use --from"),
+    }
+}
+
+/// Resolve output format: explicit flag > file extension > default to DOT.
+fn resolve_output_format(flag: Option<OutputFormat>, path: Option<&Path>) -> OutputFormat {
+    flag.or_else(|| path.and_then(|p| OutputFormat::try_from(p).ok()))
+        .unwrap_or(OutputFormat::Dot)
 }

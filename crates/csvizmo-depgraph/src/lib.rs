@@ -1,21 +1,30 @@
+use std::fmt;
 use std::path::Path;
 
 use clap::ValueEnum;
 use indexmap::IndexMap;
 
+pub mod detect;
 pub mod emit;
 pub mod parse;
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
+/// Variant order defines content-detection priority (most specific first).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum InputFormat {
-    Dot,
+    CargoMetadata,
     Mermaid,
+    Dot,
     Tgf,
     Depfile,
-    CargoMetadata,
     CargoTree,
     Tree,
     Pathlist,
+}
+
+impl fmt::Display for InputFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.to_possible_value().unwrap().get_name())
+    }
 }
 
 impl TryFrom<&Path> for InputFormat {
