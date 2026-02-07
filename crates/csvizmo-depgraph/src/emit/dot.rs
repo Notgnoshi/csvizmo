@@ -434,4 +434,45 @@ digraph deps {
 "
         );
     }
+
+    #[test]
+    fn graph_and_node_and_edge_attrs_combined() {
+        let graph = DepGraph {
+            attrs: IndexMap::from([
+                ("name".into(), "deps".into()),
+                ("rankdir".into(), "LR".into()),
+            ]),
+            nodes: IndexMap::from([
+                (
+                    "a".into(),
+                    NodeInfo {
+                        label: Some("A".into()),
+                        attrs: IndexMap::from([("shape".into(), "box".into())]),
+                    },
+                ),
+                ("b".into(), NodeInfo::default()),
+            ]),
+            edges: vec![Edge {
+                from: "a".into(),
+                to: "b".into(),
+                attrs: IndexMap::from([
+                    ("style".into(), "dashed".into()),
+                    ("color".into(), "red".into()),
+                ]),
+                ..Default::default()
+            }],
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(
+            output,
+            "\
+digraph deps {
+    rankdir=\"LR\";
+    a [label=\"A\", shape=\"box\"];
+    b;
+    a -> b [style=\"dashed\", color=\"red\"];
+}
+"
+        );
+    }
 }
