@@ -76,6 +76,8 @@ impl TryFrom<&Path> for OutputFormat {
 
 #[derive(Clone, Debug, Default)]
 pub struct DepGraph {
+    /// Graph-level attributes (e.g. DOT `rankdir`, graph name stored as `"name"`).
+    pub attrs: IndexMap<String, String>,
     pub nodes: IndexMap<String, NodeInfo>,
     pub edges: Vec<Edge>,
 }
@@ -83,9 +85,6 @@ pub struct DepGraph {
 #[derive(Clone, Debug, Default)]
 pub struct NodeInfo {
     pub label: Option<String>,
-    /// Node type (e.g. "lib", "bin", "proc-macro", "build").
-    /// Semantics are format-dependent on input; preserved where the output format supports it.
-    pub node_type: Option<String>,
     /// Arbitrary extra attributes. Parsers populate these from format-specific features;
     /// emitters carry them through where the output format allows.
     pub attrs: IndexMap<String, String>,
@@ -96,4 +95,6 @@ pub struct Edge {
     pub from: String,
     pub to: String,
     pub label: Option<String>,
+    /// Arbitrary extra attributes (e.g. DOT `style`, `color`).
+    pub attrs: IndexMap<String, String>,
 }

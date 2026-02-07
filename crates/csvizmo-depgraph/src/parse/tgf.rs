@@ -38,6 +38,7 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
                 from: from.to_string(),
                 to: to.to_string(),
                 label: join_rest(&mut parts),
+                ..Default::default()
             });
         } else {
             // Node line: "id [label...]"
@@ -138,9 +139,8 @@ mod tests {
     }
 
     #[test]
-    fn node_type_and_attrs_empty() {
+    fn attrs_empty() {
         let graph = parse("1 libfoo\n#\n").unwrap();
-        assert_eq!(graph.nodes["1"].node_type, None);
         assert!(graph.nodes["1"].attrs.is_empty());
     }
 

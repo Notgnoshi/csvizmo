@@ -2,9 +2,14 @@ use std::io::Write;
 
 use crate::DepGraph;
 
-/// DOT double-quoted string: wrap in `"…"` and escape `\` and `"`.
+/// DOT double-quoted string: wrap in `"..."` and escape `"` -> `\"`.
+///
+/// We intentionally do NOT escape `\` -> `\\`. DOT uses backslash sequences like
+/// `\n`, `\l`, `\r` as label formatting directives, and our internal representation
+/// preserves all DOT backslash sequences verbatim (see `unquote` in `parse/dot.rs`).
+/// Escaping backslashes here would corrupt formatting directives on DOT -> DOT round-trip.
 fn quote(s: &str) -> String {
-    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped = s.replace('"', "\\\"");
     format!("\"{escaped}\"")
 }
 
@@ -34,15 +39,25 @@ fn quote_id(s: &str) -> String {
 }
 
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
-    writeln!(writer, "digraph {{")?;
+    // Emit graph header with optional name.
+    if let Some(name) = graph.attrs.get("name") {
+        writeln!(writer, "digraph {} {{", quote_id(name))?;
+    } else {
+        writeln!(writer, "digraph {{")?;
+    }
+
+    // Emit graph-level attributes (skip "name" which is used for the graph ID).
+    for (k, v) in &graph.attrs {
+        if k == "name" {
+            continue;
+        }
+        writeln!(writer, "    {}={};", quote_id(k), quote(v))?;
+    }
 
     for (id, info) in &graph.nodes {
         let mut attrs = Vec::new();
         if let Some(label) = &info.label {
             attrs.push(format!("label={}", quote(label)));
-        }
-        if let Some(node_type) = &info.node_type {
-            attrs.push(format!("type={}", quote(node_type)));
         }
         for (k, v) in &info.attrs {
             attrs.push(format!("{}={}", quote_id(k), quote(v)));
@@ -56,20 +71,28 @@ pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     }
 
     for edge in &graph.edges {
+        let mut attrs = Vec::new();
         if let Some(label) = &edge.label {
-            writeln!(
-                writer,
-                "    {} -> {} [label={}];",
-                quote_id(&edge.from),
-                quote_id(&edge.to),
-                quote(label)
-            )?;
-        } else {
+            attrs.push(format!("label={}", quote(label)));
+        }
+        for (k, v) in &edge.attrs {
+            attrs.push(format!("{}={}", quote_id(k), quote(v)));
+        }
+
+        if attrs.is_empty() {
             writeln!(
                 writer,
                 "    {} -> {};",
                 quote_id(&edge.from),
                 quote_id(&edge.to)
+            )?;
+        } else {
+            writeln!(
+                writer,
+                "    {} -> {} [{}];",
+                quote_id(&edge.from),
+                quote_id(&edge.to),
+                attrs.join(", ")
             )?;
         }
     }
@@ -90,6 +113,48 @@ mod tests {
         let mut buf = Vec::new();
         emit(graph, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
+    }
+
+    #[test]
+    fn quote_plain() {
+        assert_eq!(quote("hello"), r#""hello""#);
+    }
+
+    #[test]
+    fn quote_with_quotes() {
+        assert_eq!(quote(r#"say "hi""#), r#""say \"hi\"""#);
+    }
+
+    #[test]
+    fn quote_backslash_preserved() {
+        // Backslashes pass through unchanged — DOT formatting directives
+        // like \n, \l, \r must not be double-escaped.
+        assert_eq!(quote(r"a\nb"), r#""a\nb""#);
+        assert_eq!(quote(r"a\\b"), r#""a\\b""#);
+    }
+
+    #[test]
+    fn quote_backslash_before_quote() {
+        // Internal \\" (backslash + quote) must produce \\\" in DOT.
+        assert_eq!(quote(r#"\\"b"#), r#""\\\"b""#);
+    }
+
+    #[test]
+    fn quote_unquote_roundtrip() {
+        let cases = [
+            "hello",
+            r#"say "hi""#,
+            r"path\to\file",
+            r"line1\nline2",
+            r"a\\b",
+            r#"a\\"b"#,
+            "",
+        ];
+        for s in cases {
+            let quoted = quote(s);
+            let roundtripped = crate::parse::dot::unquote(&quoted);
+            assert_eq!(roundtripped, s, "round-trip failed for {s:?}");
+        }
     }
 
     #[test]
@@ -130,6 +195,7 @@ digraph {
         let graph = DepGraph {
             nodes,
             edges: vec![],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
@@ -144,26 +210,29 @@ digraph {
     }
 
     #[test]
-    fn node_type_and_attrs() {
+    fn node_attrs() {
         let mut nodes = IndexMap::new();
         nodes.insert(
             "mylib".into(),
             NodeInfo {
                 label: Some("My Library".into()),
-                node_type: Some("lib".into()),
-                attrs: IndexMap::from([("version".into(), "1.0".into())]),
+                attrs: IndexMap::from([
+                    ("shape".into(), "box".into()),
+                    ("version".into(), "1.0".into()),
+                ]),
             },
         );
         let graph = DepGraph {
             nodes,
             edges: vec![],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
             output,
             "\
 digraph {
-    mylib [label=\"My Library\", type=\"lib\", version=\"1.0\"];
+    mylib [label=\"My Library\", shape=\"box\", version=\"1.0\"];
 }
 "
         );
@@ -185,8 +254,9 @@ digraph {
             edges: vec![Edge {
                 from: "my node".into(),
                 to: "has\"quotes".into(),
-                label: None,
+                ..Default::default()
             }],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
@@ -211,8 +281,9 @@ digraph {
             edges: vec![Edge {
                 from: "foo_bar".into(),
                 to: "Baz123".into(),
-                label: None,
+                ..Default::default()
             }],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
@@ -237,8 +308,9 @@ digraph {
             edges: vec![Edge {
                 from: "node".into(),
                 to: "edge".into(),
-                label: None,
+                ..Default::default()
             }],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
@@ -260,6 +332,7 @@ digraph {
         let graph = DepGraph {
             nodes,
             edges: vec![],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
@@ -281,13 +354,16 @@ digraph {
                     from: "a".into(),
                     to: "b".into(),
                     label: Some("uses".into()),
+                    ..Default::default()
                 },
                 Edge {
                     from: "a".into(),
                     to: "c".into(),
                     label: Some("has space".into()),
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
@@ -296,6 +372,64 @@ digraph {
 digraph {
     a -> b [label=\"uses\"];
     a -> c [label=\"has space\"];
+}
+"
+        );
+    }
+
+    #[test]
+    fn edge_attrs_emitted() {
+        let graph = DepGraph {
+            nodes: IndexMap::new(),
+            edges: vec![Edge {
+                from: "a".into(),
+                to: "b".into(),
+                label: Some("uses".into()),
+                attrs: IndexMap::from([
+                    ("style".into(), "dashed".into()),
+                    ("color".into(), "red".into()),
+                ]),
+            }],
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(
+            output,
+            "\
+digraph {
+    a -> b [label=\"uses\", style=\"dashed\", color=\"red\"];
+}
+"
+        );
+    }
+
+    #[test]
+    fn graph_name_emitted() {
+        let graph = DepGraph {
+            attrs: IndexMap::from([("name".into(), "deps".into())]),
+            nodes: IndexMap::new(),
+            edges: vec![],
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(output, "digraph deps {\n}\n");
+    }
+
+    #[test]
+    fn graph_attrs_emitted() {
+        let graph = DepGraph {
+            attrs: IndexMap::from([
+                ("name".into(), "deps".into()),
+                ("rankdir".into(), "LR".into()),
+            ]),
+            nodes: IndexMap::new(),
+            edges: vec![],
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(
+            output,
+            "\
+digraph deps {
+    rankdir=\"LR\";
 }
 "
         );

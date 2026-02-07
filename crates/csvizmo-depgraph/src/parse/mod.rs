@@ -1,5 +1,5 @@
 #[cfg(feature = "dot")]
-mod dot;
+pub(crate) mod dot;
 mod tgf;
 
 use crate::{DepGraph, InputFormat};

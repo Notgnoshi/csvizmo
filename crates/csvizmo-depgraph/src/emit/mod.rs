@@ -1,4 +1,4 @@
-mod dot;
+pub(crate) mod dot;
 mod tgf;
 
 use std::io::Write;
@@ -45,18 +45,20 @@ pub(crate) mod fixtures {
                     from: "a".into(),
                     to: "b".into(),
                     label: Some("depends".into()),
+                    ..Default::default()
                 },
                 Edge {
                     from: "b".into(),
                     to: "c".into(),
-                    label: None,
+                    ..Default::default()
                 },
                 Edge {
                     from: "a".into(),
                     to: "c".into(),
-                    label: None,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         }
     }
 }
