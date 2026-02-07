@@ -1,3 +1,4 @@
+mod dot;
 mod tgf;
 
 use std::io::Write;
@@ -6,6 +7,7 @@ use crate::{DepGraph, OutputFormat};
 
 pub fn emit(format: OutputFormat, graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     match format {
+        OutputFormat::Dot => dot::emit(graph, writer),
         OutputFormat::Tgf => tgf::emit(graph, writer),
         _ => eyre::bail!("{format:?} emitting not yet implemented"),
     }
