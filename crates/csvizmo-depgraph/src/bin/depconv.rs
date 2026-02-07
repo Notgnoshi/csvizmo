@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use csvizmo_depgraph::{InputFormat, OutputFormat};
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
+use eyre::WrapErr;
 
 /// Dependency graph format converter.
 ///
@@ -62,10 +63,24 @@ fn main() -> eyre::Result<()> {
         eyre::bail!("--detect not yet implemented");
     }
 
-    let from = args
-        .from
-        .ok_or_else(|| eyre::eyre!("--from is required (auto-detection not yet implemented)"))?;
-    let to = args.to.unwrap_or(OutputFormat::Dot);
+    let from = match args.from {
+        Some(f) => f,
+        None => match &args.input {
+            Some(path) => {
+                InputFormat::try_from(path.as_path()).wrap_err("cannot detect input format")?
+            }
+            None => eyre::bail!("cannot detect input format; use --from"),
+        },
+    };
+    let to = match args.to {
+        Some(t) => t,
+        None => match &args.output {
+            Some(path) => {
+                OutputFormat::try_from(path.as_path()).wrap_err("cannot detect output format")?
+            }
+            None => OutputFormat::Dot,
+        },
+    };
 
     let graph = csvizmo_depgraph::parse::parse(from, &input_text)?;
 

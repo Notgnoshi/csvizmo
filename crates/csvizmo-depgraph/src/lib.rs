@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use clap::ValueEnum;
 use indexmap::IndexMap;
 
@@ -16,6 +18,25 @@ pub enum InputFormat {
     Pathlist,
 }
 
+impl TryFrom<&Path> for InputFormat {
+    type Error = eyre::Report;
+
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .ok_or_else(|| eyre::eyre!("no file extension: {}", path.display()))?;
+        match ext {
+            "dot" | "gv" => Ok(Self::Dot),
+            "mmd" | "mermaid" => Ok(Self::Mermaid),
+            "tgf" => Ok(Self::Tgf),
+            "d" => Ok(Self::Depfile),
+            "json" => Ok(Self::CargoMetadata),
+            _ => eyre::bail!("unrecognized dependency graph file extension: .{ext}"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum OutputFormat {
     Dot,
@@ -24,6 +45,24 @@ pub enum OutputFormat {
     Depfile,
     Tree,
     Pathlist,
+}
+
+impl TryFrom<&Path> for OutputFormat {
+    type Error = eyre::Report;
+
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .ok_or_else(|| eyre::eyre!("no file extension: {}", path.display()))?;
+        match ext {
+            "dot" | "gv" => Ok(Self::Dot),
+            "mmd" | "mermaid" => Ok(Self::Mermaid),
+            "tgf" => Ok(Self::Tgf),
+            "d" => Ok(Self::Depfile),
+            _ => eyre::bail!("unrecognized dependency graph file extension: .{ext}"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
