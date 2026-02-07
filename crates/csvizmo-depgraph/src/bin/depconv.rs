@@ -94,6 +94,7 @@ fn resolve_input_format(
         None => None,
     };
     if let Some(f) = csvizmo_depgraph::detect::detect(input) {
+        tracing::info!("Detected input format: {f:?} from content");
         return Ok(f);
     }
     match ext_err {

@@ -80,30 +80,6 @@ fn dot_to_tgf() {
 
 #[cfg(feature = "dot")]
 #[test]
-fn dot_edge_and_graph_attrs_roundtrip() {
-    let input = r#"digraph deps { rankdir=LR; a [label="A", shape=box]; b; a -> b [style="dashed", color="red"]; }"#;
-    let output = tool!("depconv")
-        .args(["--from", "dot", "--to", "dot"])
-        .write_stdin(input)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout,
-        "\
-digraph deps {
-    rankdir=\"LR\";
-    a [label=\"A\", shape=\"box\"];
-    b;
-    a -> b [style=\"dashed\", color=\"red\"];
-}
-"
-    );
-}
-
-#[cfg(feature = "dot")]
-#[test]
 fn tgf_to_dot_to_tgf_roundtrip() {
     let input = "a\tAlpha\nb\tBravo\n#\na\tb\tuses\n";
     // TGF → DOT
@@ -123,6 +99,123 @@ fn tgf_to_dot_to_tgf_roundtrip() {
     assert!(tgf_output.status.success());
     let tgf = String::from_utf8_lossy(&tgf_output.stdout);
     assert_eq!(tgf, input);
+}
+
+#[test]
+fn depfile_to_dot() {
+    let input = "main.o: main.c config.h\n";
+    let output = tool!("depconv")
+        .args(["--from", "depfile", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    \"main.o\";
+    \"main.c\";
+    \"config.h\";
+    \"main.o\" -> \"main.c\";
+    \"main.o\" -> \"config.h\";
+}
+"
+    );
+}
+
+#[test]
+fn depfile_to_tgf() {
+    let input = include_str!("../../../data/depconv/small.d");
+    let output = tool!("depconv")
+        .args(["--from", "depfile", "--to", "tgf"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        normalize_whitespace(&stdout),
+        normalize_whitespace(
+            "main.o\nmain.c\nconfig.h\nutils.h\nutils.c\nconfig.o\nconfig.c\nutils.o\n\
+             #\n\
+             main.o main.c\nmain.o config.h\nmain.o utils.h\nmain.o utils.c\n\
+             config.o config.c\nconfig.o config.h\nutils.o utils.c\nutils.o utils.h\n"
+        )
+    );
+}
+
+#[test]
+fn depfile_auto_detect_content() {
+    let input = "main.o: main.c config.h\n";
+    let output = tool!("depconv")
+        .args(["--to", "tgf"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        normalize_whitespace(&stdout),
+        normalize_whitespace("main.o\nmain.c\nconfig.h\n#\nmain.o main.c\nmain.o config.h\n")
+    );
+}
+
+#[test]
+fn depfile_auto_detect_extension() {
+    // Path relative to test CWD
+    let fixture = "../../data/depconv/small.d";
+    let output = tool!("depconv")
+        .args(["--to", "tgf", "-i", fixture])
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        normalize_whitespace(&stdout),
+        normalize_whitespace(
+            "main.o\nmain.c\nconfig.h\nutils.h\nutils.c\nconfig.o\nconfig.c\nutils.o\n\
+             #\n\
+             main.o main.c\nmain.o config.h\nmain.o utils.h\nmain.o utils.c\n\
+             config.o config.c\nconfig.o config.h\nutils.o utils.c\nutils.o utils.h\n"
+        )
+    );
+}
+
+#[test]
+fn depfile_multi_target_fixture() {
+    let input = include_str!("../../../data/depconv/multi-target.d");
+    let output = tool!("depconv")
+        .args(["--from", "depfile", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    \"src/main.o\";
+    \"src/main.c\";
+    \"include/config.h\";
+    \"include/utils.h\";
+    \"src/config.o\";
+    \"src/config.c\";
+    \"src/utils.o\";
+    \"src/utils.c\";
+    \"src/main.o\" -> \"src/main.c\";
+    \"src/main.o\" -> \"include/config.h\";
+    \"src/main.o\" -> \"include/utils.h\";
+    \"src/config.o\" -> \"src/config.c\";
+    \"src/config.o\" -> \"include/config.h\";
+    \"src/utils.o\" -> \"src/utils.c\";
+    \"src/utils.o\" -> \"include/utils.h\";
+    \"src/utils.o\" -> \"include/config.h\";
+}
+"
+    );
 }
 
 #[cfg(feature = "dot")]

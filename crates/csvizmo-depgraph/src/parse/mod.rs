@@ -1,3 +1,4 @@
+mod depfile;
 #[cfg(feature = "dot")]
 pub(crate) mod dot;
 mod tgf;
@@ -11,6 +12,7 @@ pub fn parse(format: InputFormat, input: &str) -> eyre::Result<DepGraph> {
         #[cfg(not(feature = "dot"))]
         InputFormat::Dot => eyre::bail!("'dot' feature not enabled to maintain MIT license"),
         InputFormat::Tgf => tgf::parse(input),
+        InputFormat::Depfile => depfile::parse(input),
         _ => eyre::bail!("{format:?} parsing not yet implemented"),
     }
 }
