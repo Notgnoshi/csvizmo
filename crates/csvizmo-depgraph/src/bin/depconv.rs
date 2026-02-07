@@ -2,19 +2,36 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use clap::Parser;
+use csvizmo_depgraph::{InputFormat, OutputFormat};
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
 
-/// Dependency graph converter
+/// Dependency graph format converter.
+///
+/// Formats are auto-detected from file extensions or content when --from/--to are not specified.
 #[derive(Debug, Parser)]
 #[clap(version, verbatim_doc_comment)]
 struct Args {
     #[clap(short, long, default_value_t = tracing::Level::INFO)]
     log_level: tracing::Level,
 
-    /// Path to the input. stdin if '-' or if not passed
+    /// Input format (auto-detected from extension or content if omitted)
+    #[clap(short, long)]
+    from: Option<InputFormat>,
+
+    /// Output format (auto-detected from output extension if omitted, defaults to DOT)
+    #[clap(short, long)]
+    to: Option<OutputFormat>,
+
+    /// Print the detected input format and exit
+    #[clap(long)]
+    detect: bool,
+
+    /// Path to the input. stdin if '-' or omitted
+    #[clap(short, long)]
     input: Option<PathBuf>,
 
-    /// Path to the output. stdout if '-' or if not passed
+    /// Path to the output. stdout if '-' or omitted
+    #[clap(short, long)]
     output: Option<PathBuf>,
 }
 
