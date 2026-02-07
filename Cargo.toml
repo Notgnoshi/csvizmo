@@ -14,6 +14,7 @@ csvizmo-can = { path = "crates/csvizmo-can" }
 csvizmo-csv = { path = "crates/csvizmo-csv" }
 csvizmo-minpath = { path = "crates/csvizmo-minpath" }
 csvizmo-stats = { path = "crates/csvizmo-stats" }
+csvizmo-depgraph = { path = "crates/csvizmo-depgraph" }
 csvizmo-utils = { path = "crates/csvizmo-utils" }
 
 # External dependencies

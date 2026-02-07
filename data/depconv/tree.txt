@@ -1,0 +1,68 @@
+crates
+├── csvizmo-can
+│   ├── Cargo.toml
+│   ├── src
+│   │   ├── bin
+│   │   ├── candump.rs
+│   │   ├── fastpacket.rs
+│   │   ├── frame.rs
+│   │   ├── lib.rs
+│   │   ├── nmea2000.rs
+│   │   ├── session.rs
+│   │   └── tp.rs
+│   └── tests
+│       ├── can2csv.rs
+│       └── canstruct.rs
+├── csvizmo-csv
+│   ├── Cargo.toml
+│   ├── src
+│   │   ├── bin
+│   │   ├── csv.rs
+│   │   └── lib.rs
+│   └── tests
+│       └── csvcat.rs
+├── csvizmo-depgraph
+│   ├── Cargo.toml
+│   ├── src
+│   │   ├── bin
+│   │   └── lib.rs
+│   └── tests
+│       └── depconv.rs
+├── csvizmo-minpath
+│   ├── Cargo.toml
+│   ├── src
+│   │   ├── abbreviate.rs
+│   │   ├── bin
+│   │   ├── common_prefix.rs
+│   │   ├── homedir.rs
+│   │   ├── lib.rs
+│   │   ├── normalize.rs
+│   │   ├── prefix.rs
+│   │   ├── single_letter.rs
+│   │   ├── transform.rs
+│   │   └── unique_suffix.rs
+│   └── tests
+│       └── minpath.rs
+├── csvizmo-stats
+│   ├── Cargo.toml
+│   ├── src
+│   │   ├── bin
+│   │   ├── lib.rs
+│   │   ├── plot.rs
+│   │   └── stats.rs
+│   └── tests
+│       ├── csvdelta.rs
+│       └── csvstats.rs
+├── csvizmo-test
+│   ├── Cargo.toml
+│   └── src
+│       └── lib.rs
+└── csvizmo-utils
+    ├── Cargo.toml
+    └── src
+        ├── bin
+        ├── counter.rs
+        ├── lib.rs
+        └── stdio.rs
+
+26 directories, 40 files
