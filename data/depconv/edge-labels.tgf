@@ -1,0 +1,9 @@
+fmt csvizmo-fmt
+utils csvizmo-utils
+depgraph csvizmo-depgraph
+test csvizmo-test
+#
+depgraph utils normal
+depgraph fmt normal
+test utils dev
+fmt utils normal

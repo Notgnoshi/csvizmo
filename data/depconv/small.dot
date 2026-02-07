@@ -1,0 +1,9 @@
+digraph deps {
+    rankdir=LR;
+    myapp [label="My Application", shape=box];
+    libfoo [label="libfoo"];
+    libbar [label="libbar"];
+    myapp -> libfoo;
+    myapp -> libbar;
+    libfoo -> libbar;
+}
