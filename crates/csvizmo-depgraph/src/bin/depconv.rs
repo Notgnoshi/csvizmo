@@ -1,4 +1,4 @@
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -53,8 +53,24 @@ fn main() -> eyre::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    let _input = get_input_reader(&args.input)?;
-    let _output = get_output_writer(&args.output)?;
+    let mut input = get_input_reader(&args.input)?;
+    let mut input_text = String::new();
+    input.read_to_string(&mut input_text)?;
+
+    if args.detect {
+        // TODO: implement format auto-detection
+        eyre::bail!("--detect not yet implemented");
+    }
+
+    let from = args
+        .from
+        .ok_or_else(|| eyre::eyre!("--from is required (auto-detection not yet implemented)"))?;
+    let to = args.to.unwrap_or(OutputFormat::Dot);
+
+    let graph = csvizmo_depgraph::parse::parse(from, &input_text)?;
+
+    let mut output = get_output_writer(&args.output)?;
+    csvizmo_depgraph::emit::emit(to, &graph, &mut output)?;
 
     Ok(())
 }

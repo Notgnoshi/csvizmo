@@ -12,6 +12,7 @@ clap.workspace = true
 color-eyre.workspace = true
 csvizmo-utils.workspace = true
 eyre.workspace = true
+indexmap.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
