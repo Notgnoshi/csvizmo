@@ -1,3 +1,4 @@
+mod depfile;
 pub(crate) mod dot;
 mod tgf;
 
@@ -9,6 +10,7 @@ pub fn emit(format: OutputFormat, graph: &DepGraph, writer: &mut dyn Write) -> e
     match format {
         OutputFormat::Dot => dot::emit(graph, writer),
         OutputFormat::Tgf => tgf::emit(graph, writer),
+        OutputFormat::Depfile => depfile::emit(graph, writer),
         _ => eyre::bail!("{format:?} emitting not yet implemented"),
     }
 }

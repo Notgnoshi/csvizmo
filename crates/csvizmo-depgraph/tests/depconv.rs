@@ -218,6 +218,32 @@ digraph {
     );
 }
 
+#[test]
+fn depfile_roundtrip() {
+    let input = "main.o: main.c config.h\nutils.o: utils.c utils.h\n";
+    let output = tool!("depconv")
+        .args(["--from", "depfile", "--to", "depfile"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, input);
+}
+
+#[test]
+fn tgf_to_depfile() {
+    let input = "3\tmyapp\n1\tlibfoo\n2\tlibbar\n#\n3\t1\n3\t2\n1\t2\n";
+    let output = tool!("depconv")
+        .args(["--from", "tgf", "--to", "depfile"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "3: 1 2\n1: 2\n");
+}
+
 #[cfg(feature = "dot")]
 #[test]
 fn dot_to_dot() {
