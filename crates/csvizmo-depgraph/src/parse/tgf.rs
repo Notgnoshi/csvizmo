@@ -143,4 +143,41 @@ mod tests {
         assert_eq!(graph.nodes["1"].node_type, None);
         assert!(graph.nodes["1"].attrs.is_empty());
     }
+
+    #[test]
+    fn parse_fixture_small() {
+        let input = include_str!("../../../../data/depconv/small.tgf");
+        let graph = parse(input).unwrap();
+        assert_eq!(graph.nodes.len(), 3);
+        assert_eq!(graph.nodes["1"].label.as_deref(), Some("libfoo"));
+        assert_eq!(graph.nodes["2"].label.as_deref(), Some("libbar"));
+        assert_eq!(graph.nodes["3"].label.as_deref(), Some("myapp"));
+        assert_eq!(graph.edges.len(), 3);
+        assert_eq!(graph.edges[0].from, "3");
+        assert_eq!(graph.edges[0].to, "1");
+        assert_eq!(graph.edges[0].label, None);
+    }
+
+    #[test]
+    fn parse_fixture_nodes_only() {
+        let input = include_str!("../../../../data/depconv/nodes-only.tgf");
+        let graph = parse(input).unwrap();
+        assert_eq!(graph.nodes.len(), 3);
+        assert_eq!(graph.nodes["a"].label.as_deref(), Some("alpha"));
+        assert_eq!(graph.nodes["b"].label.as_deref(), Some("bravo"));
+        assert_eq!(graph.nodes["c"].label.as_deref(), Some("charlie"));
+        assert!(graph.edges.is_empty());
+    }
+
+    #[test]
+    fn parse_fixture_edge_labels() {
+        let input = include_str!("../../../../data/depconv/edge-labels.tgf");
+        let graph = parse(input).unwrap();
+        assert_eq!(graph.nodes.len(), 4);
+        assert_eq!(graph.nodes["fmt"].label.as_deref(), Some("csvizmo-fmt"));
+        assert_eq!(graph.edges.len(), 4);
+        assert_eq!(graph.edges[0].from, "depgraph");
+        assert_eq!(graph.edges[0].to, "utils");
+        assert_eq!(graph.edges[0].label.as_deref(), Some("normal"));
+    }
 }
