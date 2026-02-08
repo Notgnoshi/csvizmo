@@ -13,7 +13,7 @@ struct Args {
     #[clap(short, long, default_value_t = tracing::Level::INFO)]
     log_level: tracing::Level,
 
-    /// Do not replace /home/<user> paths with ~
+    /// Do not replace `/home/<user>` paths with `~`
     #[clap(short = 'T', long)]
     no_tilde: bool,
 
@@ -54,7 +54,7 @@ struct Args {
     ///
     /// If not given, all input paths will be shortened and output.
     ///
-    /// May be given multiple times. Supports '**', '*', '?', '{glob1,glob2}', '[az]' glob
+    /// May be given multiple times. Supports `**`, `*`, `?`, `{glob1,glob2}`, `[az]` glob
     /// patterns. Patterns are matched against the full-length input paths before any
     /// transformations are applied.
     #[clap(long)]
@@ -64,7 +64,7 @@ struct Args {
     ///
     /// If not given, all input paths matching the --select patterns will be shortnened and output.
     ///
-    /// May be given multiple times. Supports '**', '*', '?', '{glob1,glob2}', '[az]' glob
+    /// May be given multiple times. Supports `**`, `*`, `?`, `{glob1,glob2}`, `[az]` glob
     /// patterns. Patterns are matched against the full-length input paths before any
     /// transformations are applied.
     #[clap(short = 'x', long)]

@@ -27,3 +27,11 @@ This project uses special code formatting rules though:
 ```sh
 cargo fmt -- --config group_imports=StdExternalCrate,imports_granularity=Module
 ```
+
+Documentation should be generated with:
+
+```sh
+cargo doc --no-deps --document-private-items
+```
+
+None of the build, clippy, test, or doc commands should have any warnings or errors.
