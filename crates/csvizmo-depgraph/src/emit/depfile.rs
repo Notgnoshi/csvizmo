@@ -4,11 +4,15 @@ use indexmap::IndexMap;
 
 use crate::DepGraph;
 
-/// Emit a `DepGraph` as a makefile-style `.d` depfile.
+/// Emit a [`DepGraph`] as a makefile-style `.d` depfile.
 ///
 /// Each unique edge source becomes a target line: `target: dep1 dep2 ...`.
-/// Nodes that have no outgoing edges are not emitted (they appear implicitly
-/// as dependencies). Labels and attributes are silently dropped.
+/// This is the most lossy emitter -- only graph topology (edge endpoints) is
+/// preserved. Everything else is silently dropped:
+/// - Node labels and attrs
+/// - Edge labels and attrs
+/// - Graph-level attrs
+/// - Nodes with no outgoing edges (they appear implicitly as dependencies)
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     // Group deps by target, preserving first-seen order for targets
     // and edge order for deps within each target.

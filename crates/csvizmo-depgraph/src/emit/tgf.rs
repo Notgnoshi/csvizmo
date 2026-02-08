@@ -2,6 +2,11 @@ use std::io::Write;
 
 use crate::DepGraph;
 
+/// Emit a [`DepGraph`] as TGF (Trivial Graph Format).
+///
+/// Preserves node IDs, node labels, edge endpoints, and edge labels.
+/// Graph-level attrs, node attrs, and edge attrs are silently dropped
+/// (TGF has no syntax for them).
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     for (id, info) in &graph.nodes {
         match &info.label {
@@ -100,7 +105,7 @@ mod tests {
         let mut buf = Vec::new();
         emit(&graph, &mut buf).unwrap();
         let output = String::from_utf8(buf).unwrap();
-        // TGF only preserves IDs, labels, and edge labels — all attrs are dropped.
+        // TGF only preserves IDs, labels, and edge labels -- all attrs are dropped.
         assert_eq!(output, "a\tAlpha\nb\n#\na\tb\tuses\n");
     }
 }

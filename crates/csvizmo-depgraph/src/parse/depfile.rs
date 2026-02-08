@@ -3,7 +3,7 @@ use crate::{DepGraph, Edge};
 /// Parse a makefile-style `.d` depfile into a `DepGraph`.
 ///
 /// Each `target: dep1 dep2 ...` rule creates nodes for the target and
-/// dependencies, plus edges from target → each dependency. Supports `\`
+/// dependencies, plus edges from target -> each dependency. Supports `\`
 /// line continuations and `#` comment lines.
 pub fn parse(input: &str) -> eyre::Result<DepGraph> {
     let mut graph = DepGraph::default();

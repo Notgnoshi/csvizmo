@@ -53,7 +53,7 @@ fn main() -> eyre::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    // Normalize `-` to None — it means stdio, not a file path.
+    // Normalize `-` to None -- it means stdio, not a file path.
     let is_stdio = |p: &PathBuf| p.as_os_str() == "-";
     let input_path = args.input.filter(|p| !is_stdio(p));
     let output_path = args.output.filter(|p| !is_stdio(p));

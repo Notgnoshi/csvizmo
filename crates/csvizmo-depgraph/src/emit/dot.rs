@@ -38,6 +38,16 @@ fn quote_id(s: &str) -> String {
     }
 }
 
+/// Emit a [`DepGraph`] as a DOT `digraph`.
+///
+/// All graph features are preserved:
+/// - Graph name is taken from `attrs["name"]`; remaining graph attrs are
+///   emitted as top-level `key="val";` statements.
+/// - Node labels and arbitrary attrs are emitted as `[key="val", ...]`.
+/// - Edge labels and arbitrary attrs are emitted the same way.
+/// - Identifiers are bare when safe (alphanumeric, non-keyword), otherwise
+///   double-quoted. Backslash sequences (`\n`, `\l`, `\r`) are preserved
+///   verbatim for DOT -> DOT round-trips.
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     // Emit graph header with optional name.
     if let Some(name) = graph.attrs.get("name") {
@@ -127,7 +137,7 @@ mod tests {
 
     #[test]
     fn quote_backslash_preserved() {
-        // Backslashes pass through unchanged — DOT formatting directives
+        // Backslashes pass through unchanged -- DOT formatting directives
         // like \n, \l, \r must not be double-escaped.
         assert_eq!(quote(r"a\nb"), r#""a\nb""#);
         assert_eq!(quote(r"a\\b"), r#""a\\b""#);

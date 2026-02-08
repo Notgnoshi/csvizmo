@@ -10,11 +10,11 @@ use crate::{DepGraph, Edge, NodeInfo};
 ///
 /// This function:
 /// 1. Strips surrounding `"..."` if present (needed for node IDs / endpoints).
-/// 2. Unescapes `\"` → `"` (needed for both — attribute values still have escapes).
+/// 2. Unescapes `\"` -> `"` (needed for both -- attribute values still have escapes).
 ///
-/// We intentionally do NOT decode `\\` → `\`. DOT uses `\n`, `\l`, `\r` as label
+/// We intentionally do NOT decode `\\` -> `\`. DOT uses `\n`, `\l`, `\r` as label
 /// formatting directives, and decoding `\\` would make `\\n` (literal backslash + n)
-/// indistinguishable from `\n` (centered newline), corrupting DOT→DOT round-trips.
+/// indistinguishable from `\n` (centered newline), corrupting DOT->DOT round-trips.
 pub(crate) fn unquote(s: &str) -> String {
     let inner = if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
         &s[1..s.len() - 1]
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn unquote_escaped_backslash_before_quote() {
         // DOT \\\" = escaped backslash + escaped quote.
-        // We preserve \\ but decode \" → ", so \\\" → \\"
+        // We preserve \\ but decode \" -> ", so \\\" -> \\"
         assert_eq!(unquote(r#""a\\\"b""#), r#"a\\"b"#);
         assert_eq!(unquote(r#"a\\\"b"#), r#"a\\"b"#);
     }
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn escaped_quotes_in_label_roundtrip() {
-        // Full parse→emit round-trip with escaped quotes.
+        // Full parse->emit round-trip with escaped quotes.
         let input = r#"digraph { a [label="say \"hi\""]; }"#;
         let graph = parse(input).unwrap();
         let mut buf = Vec::new();

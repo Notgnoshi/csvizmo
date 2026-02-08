@@ -6,6 +6,21 @@ use std::io::Write;
 
 use crate::{DepGraph, OutputFormat};
 
+/// Emit a [`DepGraph`] in the given output format.
+///
+/// Not every format can represent all graph features. The table below
+/// summarises what each emitter preserves:
+///
+/// | Format  | Graph attrs | Node label | Node attrs | Edge label | Edge attrs |
+/// |---------|-------------|------------|------------|------------|------------|
+/// | DOT     | yes         | yes        | yes        | yes        | yes        |
+/// | TGF     | dropped     | yes        | dropped    | yes        | dropped    |
+/// | Depfile | dropped     | dropped    | dropped    | dropped    | dropped    |
+///
+/// Features marked "dropped" are silently discarded. Converting from a
+/// rich format (e.g. DOT) to a lossy one (e.g. Depfile) is intentionally
+/// non-destructive to the source data -- the information simply isn't
+/// written to the output.
 pub fn emit(format: OutputFormat, graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     match format {
         OutputFormat::Dot => dot::emit(graph, writer),

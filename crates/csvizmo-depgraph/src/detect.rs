@@ -112,7 +112,7 @@ fn is_pathlist(input: &str) -> bool {
     any
 }
 
-/// Any line contains tree-drawing characters — Unicode box-drawing or ASCII
+/// Any line contains tree-drawing characters -- Unicode box-drawing or ASCII
 /// equivalents (`tree --charset=ascii`, `scons --tree`).
 fn has_tree_drawing(input: &str) -> bool {
     input.lines().any(|l| {
