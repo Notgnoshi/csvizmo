@@ -244,6 +244,47 @@ fn tgf_to_depfile() {
     assert_eq!(stdout, "3: 1 2\n1: 2\n");
 }
 
+#[test]
+fn pathlist_to_dot() {
+    let input = "src/a.rs\nsrc/b.rs\nREADME.md\n";
+    let output = tool!("depconv")
+        .args(["--from", "pathlist", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    src [label=\"src\"];
+    \"src/a.rs\" [label=\"a.rs\"];
+    \"src/b.rs\" [label=\"b.rs\"];
+    \"README.md\" [label=\"README.md\"];
+    src -> \"src/a.rs\";
+    src -> \"src/b.rs\";
+}
+"
+    );
+}
+
+#[test]
+fn pathlist_auto_detect_content() {
+    let input = "src/main.rs\nsrc/lib.rs\n";
+    let output = tool!("depconv")
+        .args(["--to", "tgf"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "src\tsrc\nsrc/main.rs\tmain.rs\nsrc/lib.rs\tlib.rs\n#\nsrc\tsrc/main.rs\nsrc\tsrc/lib.rs\n"
+    );
+}
+
 #[cfg(feature = "dot")]
 #[test]
 fn dot_to_dot() {
