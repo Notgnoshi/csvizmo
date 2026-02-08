@@ -3,6 +3,7 @@ mod depfile;
 pub(crate) mod dot;
 mod pathlist;
 mod tgf;
+mod tree;
 
 use crate::{DepGraph, InputFormat};
 
@@ -15,6 +16,7 @@ pub fn parse(format: InputFormat, input: &str) -> eyre::Result<DepGraph> {
         InputFormat::Tgf => tgf::parse(input),
         InputFormat::Depfile => depfile::parse(input),
         InputFormat::Pathlist => pathlist::parse(input),
+        InputFormat::Tree => tree::parse(input),
         _ => eyre::bail!("{format:?} parsing not yet implemented"),
     }
 }

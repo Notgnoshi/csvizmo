@@ -285,6 +285,48 @@ fn pathlist_auto_detect_content() {
     );
 }
 
+#[test]
+fn tree_to_dot() {
+    let input = "root\n├── a\n│   └── b\n└── c\n";
+    let output = tool!("depconv")
+        .args(["--from", "tree", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    root [label=\"root\"];
+    \"root/a\" [label=\"a\"];
+    \"root/a/b\" [label=\"b\"];
+    \"root/c\" [label=\"c\"];
+    root -> \"root/a\";
+    \"root/a\" -> \"root/a/b\";
+    root -> \"root/c\";
+}
+"
+    );
+}
+
+#[test]
+fn tree_auto_detect_content() {
+    let input = "root\n├── child\n";
+    let output = tool!("depconv")
+        .args(["--to", "tgf"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "root\troot\nroot/child\tchild\n#\nroot\troot/child\n"
+    );
+}
+
 #[cfg(feature = "dot")]
 #[test]
 fn dot_to_dot() {
