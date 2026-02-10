@@ -133,6 +133,7 @@ mod tests {
                 label: Some("uses".into()),
                 attrs: IndexMap::from([("style".into(), "dashed".into())]),
             }],
+            ..Default::default()
         };
         assert_eq!(emit_to_string(&graph), "a: b\n");
     }

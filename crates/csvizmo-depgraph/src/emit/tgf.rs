@@ -101,6 +101,7 @@ mod tests {
                 label: Some("uses".into()),
                 attrs: IndexMap::from([("style".into(), "dashed".into())]),
             }],
+            ..Default::default()
         };
         let mut buf = Vec::new();
         emit(&graph, &mut buf).unwrap();

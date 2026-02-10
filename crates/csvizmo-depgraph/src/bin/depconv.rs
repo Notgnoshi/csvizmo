@@ -73,9 +73,10 @@ fn main() -> eyre::Result<()> {
 
     let graph = csvizmo_depgraph::parse::parse(from, &input_text)?;
     tracing::info!(
-        "Parsed graph with {} nodes and {} edges",
-        graph.nodes.len(),
-        graph.edges.len()
+        "Parsed graph with {} nodes, {} edges, and {} subgraphs",
+        graph.all_nodes().len(),
+        graph.all_edges().len(),
+        graph.subgraphs.len()
     );
 
     let mut output = get_output_writer(&output_path)?;

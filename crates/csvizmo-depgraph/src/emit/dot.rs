@@ -41,8 +41,8 @@ fn quote_id(s: &str) -> String {
 /// Emit a [`DepGraph`] as a DOT `digraph`.
 ///
 /// All graph features are preserved:
-/// - Graph name is taken from `attrs["name"]`; remaining graph attrs are
-///   emitted as top-level `key="val";` statements.
+/// - Graph name is taken from `graph.id`.
+/// - Graph-level attrs are emitted as top-level `key="val";` statements.
 /// - Node labels and arbitrary attrs are emitted as `[key="val", ...]`.
 /// - Edge labels and arbitrary attrs are emitted the same way.
 /// - Identifiers are bare when safe (alphanumeric, non-keyword), otherwise
@@ -50,7 +50,7 @@ fn quote_id(s: &str) -> String {
 ///   verbatim for DOT -> DOT round-trips.
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     // Emit graph header with optional name.
-    if let Some(name) = graph.attrs.get("name") {
+    if let Some(name) = &graph.id {
         writeln!(writer, "digraph {} {{", quote_id(name))?;
     } else {
         writeln!(writer, "digraph {{")?;
