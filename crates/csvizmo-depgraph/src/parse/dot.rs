@@ -86,6 +86,27 @@ fn walk_stmts(stmts: &[AstStmt], dep: &mut DepGraph) {
     }
 
     dep.subgraphs = subgraphs;
+    remove_implicit_duplicates(dep);
+}
+
+/// Remove nodes from this level that were implicitly created by edge processing
+/// but are explicitly declared (with label or attrs) in a descendant subgraph.
+///
+/// This runs bottom-up: inner subgraphs are already cleaned by their own
+/// `walk_stmts` call before the parent runs this.
+fn remove_implicit_duplicates(dep: &mut DepGraph) {
+    if dep.subgraphs.is_empty() {
+        return;
+    }
+    let subgraph_nodes = dep
+        .subgraphs
+        .iter()
+        .flat_map(|sg| sg.all_nodes())
+        .collect::<indexmap::IndexMap<&str, _>>();
+    dep.nodes.retain(|id, info| {
+        let is_implicit = info.label.is_none() && info.attrs.is_empty();
+        !(is_implicit && subgraph_nodes.contains_key(id.as_str()))
+    });
 }
 
 /// Build a DepGraph from an AST subgraph.
@@ -590,6 +611,106 @@ mod tests {
         assert_eq!(graph.subgraphs[0].edges.len(), 1);
         assert_eq!(graph.subgraphs[0].edges[0].from, "c");
         assert_eq!(graph.subgraphs[0].edges[0].to, "d");
+    }
+
+    #[test]
+    fn cross_subgraph_edge_no_duplicate_node() {
+        // Edge at top level references node declared in subgraph.
+        // The implicit default at top level should be removed.
+        let graph = parse(
+            r#"digraph {
+                a -> b;
+                subgraph cluster0 {
+                    b [label="B"];
+                }
+            }"#,
+        )
+        .unwrap();
+        // `a` stays at top level (only defined here).
+        // `b` should NOT be at top level -- it's in the subgraph.
+        assert_eq!(graph.nodes.len(), 1);
+        assert!(graph.nodes.contains_key("a"));
+        assert!(!graph.nodes.contains_key("b"));
+        // `b` lives in the subgraph with its label.
+        assert_eq!(graph.subgraphs[0].nodes.len(), 1);
+        assert_eq!(graph.subgraphs[0].nodes["b"].label.as_deref(), Some("B"));
+        // Flattened view still has both nodes.
+        let all = graph.all_nodes();
+        assert_eq!(all.len(), 2);
+        assert!(all.contains_key("a"));
+        assert!(all.contains_key("b"));
+    }
+
+    #[test]
+    fn cross_subgraph_edge_forward_reference() {
+        // Edge appears before the subgraph that declares the node.
+        let graph = parse(
+            r#"digraph {
+                subgraph cluster0 {
+                    a [label="A"];
+                }
+                a -> b;
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(graph.nodes.len(), 1);
+        assert!(graph.nodes.contains_key("b"));
+        assert!(!graph.nodes.contains_key("a"));
+        assert_eq!(graph.subgraphs[0].nodes["a"].label.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn cross_subgraph_edge_nested_dedup() {
+        // Node declared in deeply nested subgraph, edges at multiple levels.
+        let graph = parse(
+            r#"digraph {
+                a -> b;
+                subgraph outer {
+                    b -> c;
+                    subgraph inner {
+                        b [label="B"];
+                        c [label="C"];
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        // Top level: only `a` (b was deduped).
+        assert_eq!(graph.nodes.len(), 1);
+        assert!(graph.nodes.contains_key("a"));
+        // Outer: b and c were deduped (implicit defaults, declared in inner).
+        assert_eq!(graph.subgraphs[0].nodes.len(), 0);
+        // Inner: b and c with labels.
+        let inner = &graph.subgraphs[0].subgraphs[0];
+        assert_eq!(inner.nodes.len(), 2);
+        assert_eq!(inner.nodes["b"].label.as_deref(), Some("B"));
+        assert_eq!(inner.nodes["c"].label.as_deref(), Some("C"));
+        // Flattened view has all three.
+        let all = graph.all_nodes();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn explicit_top_level_node_not_deduped() {
+        // Node explicitly declared with attrs at top level AND in subgraph.
+        // Both should be kept (no data loss).
+        let graph = parse(
+            r#"digraph {
+                a [color="red"];
+                subgraph cluster0 {
+                    a [label="A"];
+                }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(graph.nodes.len(), 1);
+        assert!(graph.nodes.contains_key("a"));
+        assert_eq!(
+            graph.nodes["a"].attrs.get("color").map(|s| s.as_str()),
+            Some("red")
+        );
+        assert_eq!(graph.subgraphs[0].nodes.len(), 1);
+        assert_eq!(graph.subgraphs[0].nodes["a"].label.as_deref(), Some("A"));
     }
 
     #[test]
