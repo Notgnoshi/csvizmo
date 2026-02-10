@@ -356,6 +356,28 @@ digraph deps {
 
 #[cfg(feature = "dot")]
 #[test]
+fn dot_subgraph_to_depfile() {
+    let input = "\
+digraph {
+    top -> a;
+    subgraph cluster0 {
+        a -> b;
+        b -> c;
+    }
+}
+";
+    let output = tool!("depconv")
+        .args(["--from", "dot", "--to", "depfile"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "top: a\na: b\nb: c\n");
+}
+
+#[cfg(feature = "dot")]
+#[test]
 fn cmake_dot_preserves_subgraph() {
     let input = include_str!("../../../data/depconv/cmake.geos.dot");
 

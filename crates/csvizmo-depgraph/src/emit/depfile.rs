@@ -1,7 +1,5 @@
 use std::io::Write;
 
-use indexmap::IndexMap;
-
 use crate::DepGraph;
 
 /// Emit a [`DepGraph`] as a makefile-style `.d` depfile.
@@ -14,14 +12,7 @@ use crate::DepGraph;
 /// - Graph-level attrs
 /// - Nodes with no outgoing edges (they appear implicitly as dependencies)
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
-    // Group deps by target, preserving first-seen order for targets
-    // and edge order for deps within each target.
-    let mut targets: IndexMap<&str, Vec<&str>> = IndexMap::new();
-    for edge in &graph.edges {
-        targets.entry(&edge.from).or_default().push(&edge.to);
-    }
-
-    for (target, deps) in &targets {
+    for (target, deps) in &graph.adjacency_list() {
         write!(writer, "{target}:")?;
         for dep in deps {
             write!(writer, " {dep}")?;
@@ -161,5 +152,26 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(emit_to_string(&graph), "z.o: z.c\na.o: a.c\nm.o: m.c\n");
+    }
+
+    #[test]
+    fn subgraph_edges_included() {
+        let graph = DepGraph {
+            edges: vec![Edge {
+                from: "top".into(),
+                to: "a".into(),
+                ..Default::default()
+            }],
+            subgraphs: vec![DepGraph {
+                edges: vec![Edge {
+                    from: "a".into(),
+                    to: "b".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(emit_to_string(&graph), "top: a\na: b\n");
     }
 }

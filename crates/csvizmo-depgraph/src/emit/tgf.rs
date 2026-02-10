@@ -8,7 +8,7 @@ use crate::DepGraph;
 /// Graph-level attrs, node attrs, and edge attrs are silently dropped
 /// (TGF has no syntax for them).
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
-    for (id, info) in &graph.nodes {
+    for (id, info) in graph.all_nodes() {
         match &info.label {
             Some(label) => writeln!(writer, "{id}\t{label}")?,
             None => writeln!(writer, "{id}")?,
@@ -17,7 +17,7 @@ pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
 
     writeln!(writer, "#")?;
 
-    for edge in &graph.edges {
+    for edge in graph.all_edges() {
         match &edge.label {
             Some(label) => writeln!(writer, "{}\t{}\t{label}", edge.from, edge.to)?,
             None => writeln!(writer, "{}\t{}", edge.from, edge.to)?,
@@ -32,8 +32,8 @@ mod tests {
     use indexmap::IndexMap;
 
     use super::*;
-    use crate::NodeInfo;
     use crate::emit::fixtures::sample_graph;
+    use crate::{Edge, NodeInfo};
 
     #[test]
     fn emit_sample() {
@@ -108,5 +108,41 @@ mod tests {
         let output = String::from_utf8(buf).unwrap();
         // TGF only preserves IDs, labels, and edge labels -- all attrs are dropped.
         assert_eq!(output, "a\tAlpha\nb\n#\na\tb\tuses\n");
+    }
+
+    #[test]
+    fn subgraph_nodes_and_edges_included() {
+        let graph = DepGraph {
+            nodes: IndexMap::from([("top".into(), NodeInfo::default())]),
+            edges: vec![Edge {
+                from: "top".into(),
+                to: "a".into(),
+                ..Default::default()
+            }],
+            subgraphs: vec![DepGraph {
+                nodes: IndexMap::from([
+                    (
+                        "a".into(),
+                        NodeInfo {
+                            label: Some("Alpha".into()),
+                            ..Default::default()
+                        },
+                    ),
+                    ("b".into(), NodeInfo::default()),
+                ]),
+                edges: vec![Edge {
+                    from: "a".into(),
+                    to: "b".into(),
+                    label: Some("uses".into()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut buf = Vec::new();
+        emit(&graph, &mut buf).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        assert_eq!(output, "top\na\tAlpha\nb\n#\ntop\ta\na\tb\tuses\n");
     }
 }
