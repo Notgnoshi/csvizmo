@@ -23,10 +23,12 @@ fn is_bare_id(s: &str) -> bool {
 }
 
 fn is_dot_keyword(s: &str) -> bool {
-    matches!(
-        s,
-        "node" | "edge" | "graph" | "digraph" | "subgraph" | "strict"
-    )
+    s.eq_ignore_ascii_case("node")
+        || s.eq_ignore_ascii_case("edge")
+        || s.eq_ignore_ascii_case("graph")
+        || s.eq_ignore_ascii_case("digraph")
+        || s.eq_ignore_ascii_case("subgraph")
+        || s.eq_ignore_ascii_case("strict")
 }
 
 /// Quote a DOT ID: bare identifiers pass through, everything else gets double-quoted.
@@ -376,6 +378,29 @@ digraph {
     \"node\";
     \"edge\";
     \"node\" -> \"edge\";
+}
+"
+        );
+    }
+
+    #[test]
+    fn dot_keyword_ids_case_insensitive() {
+        let mut nodes = IndexMap::new();
+        nodes.insert("Node".into(), NodeInfo::default());
+        nodes.insert("GRAPH".into(), NodeInfo::default());
+        nodes.insert("Subgraph".into(), NodeInfo::default());
+        let graph = DepGraph {
+            nodes,
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(
+            output,
+            "\
+digraph {
+    \"Node\";
+    \"GRAPH\";
+    \"Subgraph\";
 }
 "
         );
