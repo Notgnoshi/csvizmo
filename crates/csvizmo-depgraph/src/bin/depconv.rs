@@ -69,9 +69,14 @@ fn main() -> eyre::Result<()> {
         return Ok(());
     }
 
-    let to = resolve_output_format(args.to, output_path.as_deref());
+    let to = resolve_output_format(args.to, output_path.as_deref())?;
 
     let graph = csvizmo_depgraph::parse::parse(from, &input_text)?;
+    tracing::info!(
+        "Parsed graph with {} nodes and {} edges",
+        graph.nodes.len(),
+        graph.edges.len()
+    );
 
     let mut output = get_output_writer(&output_path)?;
     csvizmo_depgraph::emit::emit(to, &graph, &mut output)?;
@@ -89,14 +94,21 @@ fn resolve_input_format(
         return Ok(f);
     }
     let ext_err = match path.map(InputFormat::try_from) {
-        Some(Ok(f)) => return Ok(f),
+        Some(Ok(f)) => {
+            tracing::info!("Detected input format: {f:?} from file extension");
+            return Ok(f);
+        }
+        // There was an error with the extension detection, but we'll try content detection before bailing
         Some(Err(e)) => Some(e),
+        // There was no path
         None => None,
     };
+    // Try to detect type from content before bailing
     if let Some(f) = csvizmo_depgraph::detect::detect(input) {
         tracing::info!("Detected input format: {f:?} from content");
         return Ok(f);
     }
+    // Bail, but try to give a better error based on whether the extension detection failed
     match ext_err {
         Some(e) => Err(e.wrap_err("cannot detect input format; use --from")),
         None => eyre::bail!("cannot detect input format; use --from"),
@@ -104,7 +116,22 @@ fn resolve_input_format(
 }
 
 /// Resolve output format: explicit flag > file extension > default to DOT.
-fn resolve_output_format(flag: Option<OutputFormat>, path: Option<&Path>) -> OutputFormat {
-    flag.or_else(|| path.and_then(|p| OutputFormat::try_from(p).ok()))
-        .unwrap_or(OutputFormat::Dot)
+fn resolve_output_format(
+    flag: Option<OutputFormat>,
+    path: Option<&Path>,
+) -> eyre::Result<OutputFormat> {
+    if let Some(f) = flag {
+        return Ok(f);
+    }
+    match path.map(OutputFormat::try_from) {
+        Some(Ok(f)) => {
+            tracing::info!("Detected output format: {f:?} from file extension");
+            Ok(f)
+        }
+        Some(Err(e)) => {
+            // TODO: I can't decide if this should error or default to DOT
+            Err(e.wrap_err("Failed to detect output format from file extension; use --to"))
+        }
+        None => Ok(OutputFormat::Dot),
+    }
 }
