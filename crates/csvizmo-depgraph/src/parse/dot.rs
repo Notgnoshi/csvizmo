@@ -1,4 +1,5 @@
-use dot_parser::{ast, canonical};
+use dot_parser::ast;
+use either::Either;
 
 use crate::{DepGraph, Edge, NodeInfo};
 
@@ -24,91 +25,208 @@ pub(crate) fn unquote(s: &str) -> String {
     inner.replace("\\\"", "\"")
 }
 
+type AstGraph<'a> = ast::Graph<(ast::ID<'a>, ast::ID<'a>)>;
+type AstStmt<'a> = ast::Stmt<(ast::ID<'a>, ast::ID<'a>)>;
+type AstAttrList<'a> = ast::AttrList<(ast::ID<'a>, ast::ID<'a>)>;
+type AstSubgraph<'a> = ast::Subgraph<(ast::ID<'a>, ast::ID<'a>)>;
+type AstEdgeStmt<'a> = ast::EdgeStmt<(ast::ID<'a>, ast::ID<'a>)>;
+
+/// Convert an `ast::ID` to a String. The ID's inner field is private, so
+/// we must use the `Into<String>` impl which consumes the value.
+fn id_to_string(id: &ast::ID) -> String {
+    let s: String = id.clone().into();
+    s
+}
+
 pub fn parse(input: &str) -> eyre::Result<DepGraph> {
-    let ast_graph = ast::Graph::try_from(input).map_err(|e| eyre::eyre!("DOT parse error: {e}"))?;
-    let graph = canonical::Graph::from(ast_graph);
+    let ast_graph: AstGraph =
+        ast::Graph::try_from(input).map_err(|e| eyre::eyre!("DOT parse error: {e}"))?;
 
-    let mut dep = DepGraph::default();
+    let mut dep = DepGraph {
+        id: ast_graph.name.map(|n| unquote(&n)),
+        ..Default::default()
+    };
 
-    // Store graph name if present.
-    if let Some(name) = &graph.name {
-        dep.attrs.insert("name".into(), unquote(name));
-    }
-
-    // Store graph-level attributes from `graph [key=val]` statements.
-    for attr_stmt in &graph.attr {
-        if let canonical::AttrStmt::Graph(attr) = attr_stmt {
-            let (k, v) = attr;
-            let k: String = k.clone().into();
-            let v: String = v.clone().into();
-            dep.attrs.insert(unquote(&k), unquote(&v));
-        }
-    }
-
-    // Store bare `key=val;` statements (ID equalities) as graph-level attributes.
-    for ideq in &graph.ideqs {
-        dep.attrs.insert(unquote(&ideq.lhs), unquote(&ideq.rhs));
-    }
-
-    // dot-parser uses HashMap internally so iteration order is non-deterministic.
-    // Sort by node ID to ensure deterministic output.
-    let mut sorted_nodes: Vec<_> = graph.nodes.set.iter().collect();
-    sorted_nodes.sort_by_key(|(id, _)| *id);
-
-    for (id, node) in sorted_nodes {
-        let id = unquote(id);
-
-        let mut info = NodeInfo::default();
-        for (k, v) in &node.attr.elems {
-            let k: String = k.clone().into();
-            let v: String = v.clone().into();
-            let key = unquote(&k);
-            let value = unquote(&v);
-            if key == "label" {
-                info.label = Some(value);
-            } else {
-                info.attrs.insert(key, value);
-            }
-        }
-        dep.nodes.insert(id, info);
-    }
-
-    for edge in &graph.edges.set {
-        let from = unquote(&edge.from);
-        let to = unquote(&edge.to);
-
-        let mut label = None;
-        let mut attrs = indexmap::IndexMap::new();
-        for (k, v) in &edge.attr {
-            let k: String = k.clone().into();
-            let v: String = v.clone().into();
-            let key = unquote(&k);
-            let value = unquote(&v);
-            if key == "label" {
-                label = Some(value);
-            } else {
-                attrs.insert(key, value);
-            }
-        }
-        // Ensure both endpoints exist as nodes (DOT can define nodes implicitly via edges).
-        for endpoint in [&from, &to] {
-            dep.nodes
-                .entry(endpoint.clone())
-                .or_insert_with(NodeInfo::default);
-        }
-        dep.edges.push(Edge {
-            from,
-            to,
-            label,
-            attrs,
-        });
-    }
+    walk_stmts(&ast_graph.stmts.stmts, &mut dep);
+    dep.nodes.sort_keys();
 
     Ok(dep)
 }
 
+/// Walk a list of AST statements, populating nodes, edges, attrs, and subgraphs
+/// on the given DepGraph.
+fn walk_stmts(stmts: &[AstStmt], dep: &mut DepGraph) {
+    let mut subgraphs = Vec::new();
+
+    for stmt in stmts {
+        match stmt {
+            AstStmt::NodeStmt(node_stmt) => {
+                add_node(node_stmt, dep);
+            }
+            AstStmt::EdgeStmt(edge_stmt) => {
+                add_edges(edge_stmt, dep);
+            }
+            AstStmt::AttrStmt(attr_stmt) => match attr_stmt {
+                ast::AttrStmt::Graph(attr_list) => {
+                    extract_graph_attrs(attr_list, &mut dep.attrs);
+                }
+                // `node [fontsize="12"]` and `edge [style=invis]` are default
+                // attribute statements -- rendering hints, not semantic data.
+                // The canonical::Graph conversion used to apply these per-node,
+                // but we skip them intentionally.
+                ast::AttrStmt::Node(_) | ast::AttrStmt::Edge(_) => {}
+            },
+            AstStmt::IDEq(k, v) => {
+                dep.attrs.insert(unquote(k), unquote(v));
+            }
+            AstStmt::Subgraph(sub) => {
+                subgraphs.push(collect_subgraph(sub));
+            }
+        }
+    }
+
+    dep.subgraphs = subgraphs;
+}
+
+/// Build a DepGraph from an AST subgraph.
+fn collect_subgraph(sub: &AstSubgraph) -> DepGraph {
+    let mut dep = DepGraph {
+        id: sub.id.as_ref().map(|s| unquote(s)),
+        ..Default::default()
+    };
+    walk_stmts(&sub.stmts.stmts, &mut dep);
+    dep.nodes.sort_keys();
+    dep
+}
+
+/// Add a node from a NodeStmt into the DepGraph, returning the unquoted node ID.
+fn add_node(node_stmt: &ast::NodeStmt<(ast::ID, ast::ID)>, dep: &mut DepGraph) -> String {
+    let id = unquote(&node_stmt.node.id);
+    let mut info = NodeInfo::default();
+
+    if let Some(attr_list) = &node_stmt.attr {
+        for alist in &attr_list.elems {
+            for (k, v) in &alist.elems {
+                let key = unquote(&id_to_string(k));
+                let value = unquote(&id_to_string(v));
+                if key == "label" {
+                    info.label = Some(value);
+                } else {
+                    info.attrs.insert(key, value);
+                }
+            }
+        }
+    }
+
+    dep.nodes.insert(id.clone(), info);
+    id
+}
+
+/// Flatten an EdgeStmt into individual edges and add them to the DepGraph.
+/// Handles chained edges (a -> b -> c) and subgraph endpoints ({ a b } -> c).
+fn add_edges(edge_stmt: &AstEdgeStmt, dep: &mut DepGraph) {
+    // Extract edge attributes (shared across all flattened edges).
+    let mut edge_label = None;
+    let mut edge_attrs = indexmap::IndexMap::new();
+    if let Some(attr_list) = &edge_stmt.attr {
+        for alist in &attr_list.elems {
+            for (k, v) in &alist.elems {
+                let key = unquote(&id_to_string(k));
+                let value = unquote(&id_to_string(v));
+                if key == "label" {
+                    edge_label = Some(value);
+                } else {
+                    edge_attrs.insert(key, value);
+                }
+            }
+        }
+    }
+
+    // Collect all endpoints in the chain: from -> to1 -> to2 -> ...
+    let mut endpoints: Vec<Either<&ast::NodeID, &AstSubgraph>> = Vec::new();
+    endpoints.push(edge_stmt.from.as_ref());
+    let mut rhs = &edge_stmt.next;
+    loop {
+        endpoints.push(rhs.to.as_ref());
+        match &rhs.next {
+            Some(next) => rhs = next,
+            None => break,
+        }
+    }
+
+    // For each consecutive pair, create edges between all node IDs.
+    for pair in endpoints.windows(2) {
+        let from_ids = endpoint_node_ids(&pair[0], dep);
+        let to_ids = endpoint_node_ids(&pair[1], dep);
+        for from_id in &from_ids {
+            for to_id in &to_ids {
+                // Ensure implicit nodes exist.
+                dep.nodes.entry(from_id.clone()).or_default();
+                dep.nodes.entry(to_id.clone()).or_default();
+                dep.edges.push(Edge {
+                    from: from_id.clone(),
+                    to: to_id.clone(),
+                    label: edge_label.clone(),
+                    attrs: edge_attrs.clone(),
+                });
+            }
+        }
+    }
+}
+
+/// Extract node IDs from an edge endpoint, which may be a single node or an
+/// anonymous subgraph containing multiple nodes.
+fn endpoint_node_ids(
+    endpoint: &Either<&ast::NodeID, &AstSubgraph>,
+    dep: &mut DepGraph,
+) -> Vec<String> {
+    match endpoint {
+        Either::Left(node_id) => vec![unquote(&node_id.id)],
+        Either::Right(sub) => {
+            // Anonymous subgraph as edge endpoint: collect all node IDs.
+            let mut ids = Vec::new();
+            collect_endpoint_ids(&sub.stmts.stmts, &mut ids, dep);
+            ids
+        }
+    }
+}
+
+/// Recursively collect node IDs from statements inside an anonymous subgraph
+/// used as an edge endpoint.
+fn collect_endpoint_ids(stmts: &[AstStmt], ids: &mut Vec<String>, dep: &mut DepGraph) {
+    for stmt in stmts {
+        match stmt {
+            AstStmt::NodeStmt(node_stmt) => {
+                ids.push(add_node(node_stmt, dep));
+            }
+            AstStmt::EdgeStmt(edge_stmt) => {
+                // Edges inside anonymous subgraph endpoints still define nodes.
+                add_edges(edge_stmt, dep);
+                // Collect the from-endpoint node IDs.
+                let mut inner_ids = endpoint_node_ids(&edge_stmt.from.as_ref(), dep);
+                ids.append(&mut inner_ids);
+            }
+            AstStmt::Subgraph(sub) => {
+                collect_endpoint_ids(&sub.stmts.stmts, ids, dep);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Extract key-value pairs from an AttrList into the attrs map.
+fn extract_graph_attrs(attr_list: &AstAttrList, attrs: &mut indexmap::IndexMap<String, String>) {
+    for alist in &attr_list.elems {
+        for (k, v) in &alist.elems {
+            attrs.insert(unquote(&id_to_string(k)), unquote(&id_to_string(v)));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use dot_parser::canonical;
+
     use super::*;
 
     #[test]
@@ -319,7 +437,7 @@ mod tests {
     #[test]
     fn graph_name_captured() {
         let graph = parse("digraph deps { a -> b; }").unwrap();
-        assert_eq!(graph.attrs.get("name").map(|s| s.as_str()), Some("deps"));
+        assert_eq!(graph.id.as_deref(), Some("deps"));
     }
 
     #[test]
@@ -396,7 +514,179 @@ mod tests {
         );
         assert_eq!(graph.edges.len(), 3);
         // Graph name and rankdir captured
-        assert_eq!(graph.attrs.get("name").map(|s| s.as_str()), Some("deps"));
+        assert_eq!(graph.id.as_deref(), Some("deps"));
         assert_eq!(graph.attrs.get("rankdir").map(|s| s.as_str()), Some("LR"));
+    }
+
+    #[test]
+    fn subgraph_basic() {
+        let graph = parse(
+            r#"digraph {
+                top;
+                subgraph cluster0 {
+                    label = "Group A";
+                    a;
+                    b;
+                }
+            }"#,
+        )
+        .unwrap();
+        // Top-level has only the standalone node.
+        assert_eq!(graph.nodes.len(), 1);
+        assert!(graph.nodes.contains_key("top"));
+        // One subgraph.
+        assert_eq!(graph.subgraphs.len(), 1);
+        assert_eq!(graph.subgraphs[0].id.as_deref(), Some("cluster0"));
+        assert_eq!(
+            graph.subgraphs[0].attrs.get("label").map(|s| s.as_str()),
+            Some("Group A")
+        );
+        assert_eq!(graph.subgraphs[0].nodes.len(), 2);
+        assert!(graph.subgraphs[0].nodes.contains_key("a"));
+        assert!(graph.subgraphs[0].nodes.contains_key("b"));
+    }
+
+    #[test]
+    fn subgraph_nested() {
+        let graph = parse(
+            r#"digraph {
+                subgraph outer {
+                    x;
+                    subgraph inner {
+                        y;
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(graph.subgraphs.len(), 1);
+        let outer = &graph.subgraphs[0];
+        assert_eq!(outer.id.as_deref(), Some("outer"));
+        assert_eq!(outer.nodes.len(), 1);
+        assert!(outer.nodes.contains_key("x"));
+        assert_eq!(outer.subgraphs.len(), 1);
+        let inner = &outer.subgraphs[0];
+        assert_eq!(inner.id.as_deref(), Some("inner"));
+        assert_eq!(inner.nodes.len(), 1);
+        assert!(inner.nodes.contains_key("y"));
+    }
+
+    #[test]
+    fn subgraph_edges_stay_local() {
+        let graph = parse(
+            r#"digraph {
+                a -> b;
+                subgraph cluster0 {
+                    c -> d;
+                }
+            }"#,
+        )
+        .unwrap();
+        // Parent-level edges only.
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(graph.edges[0].from, "a");
+        assert_eq!(graph.edges[0].to, "b");
+        // Subgraph edges only.
+        assert_eq!(graph.subgraphs[0].edges.len(), 1);
+        assert_eq!(graph.subgraphs[0].edges[0].from, "c");
+        assert_eq!(graph.subgraphs[0].edges[0].to, "d");
+    }
+
+    #[test]
+    fn fixture_cmake_geos_subgraph() {
+        let input = include_str!("../../../../data/depconv/cmake.geos.dot");
+        let graph = parse(input).unwrap();
+
+        assert_eq!(graph.id.as_deref(), Some("GEOS"));
+
+        // One subgraph: clusterLegend.
+        assert_eq!(graph.subgraphs.len(), 1);
+        let legend = &graph.subgraphs[0];
+        assert_eq!(legend.id.as_deref(), Some("clusterLegend"));
+        assert_eq!(
+            legend.attrs.get("label").map(|s| s.as_str()),
+            Some("Legend")
+        );
+        assert_eq!(legend.attrs.get("color").map(|s| s.as_str()), Some("black"));
+
+        // Legend subgraph: 8 nodes (legendNode0-7), 7 edges.
+        assert_eq!(legend.nodes.len(), 8);
+        assert!(legend.nodes.contains_key("legendNode0"));
+        assert!(legend.nodes.contains_key("legendNode7"));
+        assert_eq!(legend.edges.len(), 7);
+
+        // Parent: 11 nodes (node0-node10), 13 edges.
+        assert_eq!(graph.nodes.len(), 11);
+        assert!(graph.nodes.contains_key("node0"));
+        assert!(graph.nodes.contains_key("node8"));
+        assert!(graph.nodes.contains_key("node10"));
+        // node8's label is "Threads::Threads".
+        assert_eq!(
+            graph.nodes["node8"].label.as_deref(),
+            Some("Threads::Threads")
+        );
+        assert_eq!(graph.edges.len(), 13);
+
+        // No legend attributes leaked into parent.
+        assert_eq!(graph.attrs.get("label"), None);
+        assert_eq!(graph.attrs.get("color"), None);
+    }
+
+    #[test]
+    fn all_nodes_flattens() {
+        let graph = parse(
+            r#"digraph {
+                a;
+                subgraph s1 {
+                    b;
+                    subgraph s2 {
+                        c;
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        let all = graph.all_nodes();
+        assert_eq!(all.len(), 3);
+        assert!(all.contains_key("a"));
+        assert!(all.contains_key("b"));
+        assert!(all.contains_key("c"));
+    }
+
+    #[test]
+    fn all_edges_flattens() {
+        let graph = parse(
+            r#"digraph {
+                a -> b;
+                subgraph s1 {
+                    c -> d;
+                }
+            }"#,
+        )
+        .unwrap();
+        let all = graph.all_edges();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].from, "a");
+        assert_eq!(all[0].to, "b");
+        assert_eq!(all[1].from, "c");
+        assert_eq!(all[1].to, "d");
+    }
+
+    #[test]
+    fn adjacency_list_across_subgraphs() {
+        let graph = parse(
+            r#"digraph {
+                a -> b;
+                subgraph s1 {
+                    b -> c;
+                    c -> d;
+                }
+            }"#,
+        )
+        .unwrap();
+        let adj = graph.adjacency_list();
+        assert_eq!(adj.get("a").map(|v| v.as_slice()), Some(["b"].as_slice()));
+        assert_eq!(adj.get("b").map(|v| v.as_slice()), Some(["c"].as_slice()));
+        assert_eq!(adj.get("c").map(|v| v.as_slice()), Some(["d"].as_slice()));
     }
 }

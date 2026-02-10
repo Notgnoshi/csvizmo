@@ -45,6 +45,7 @@ fn quote_id(s: &str) -> String {
 /// - Graph-level attrs are emitted as top-level `key="val";` statements.
 /// - Node labels and arbitrary attrs are emitted as `[key="val", ...]`.
 /// - Edge labels and arbitrary attrs are emitted the same way.
+/// - Subgraphs are emitted as nested `subgraph <id> { ... }` blocks.
 /// - Identifiers are bare when safe (alphanumeric, non-keyword), otherwise
 ///   double-quoted. Backslash sequences (`\n`, `\l`, `\r`) are preserved
 ///   verbatim for DOT -> DOT round-trips.
@@ -56,58 +57,103 @@ pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
         writeln!(writer, "digraph {{")?;
     }
 
-    // Emit graph-level attributes (skip "name" which is used for the graph ID).
-    for (k, v) in &graph.attrs {
-        if k == "name" {
-            continue;
-        }
-        writeln!(writer, "    {}={};", quote_id(k), quote(v))?;
-    }
-
-    for (id, info) in &graph.nodes {
-        let mut attrs = Vec::new();
-        if let Some(label) = &info.label {
-            attrs.push(format!("label={}", quote(label)));
-        }
-        for (k, v) in &info.attrs {
-            attrs.push(format!("{}={}", quote_id(k), quote(v)));
-        }
-
-        if attrs.is_empty() {
-            writeln!(writer, "    {};", quote_id(id))?;
-        } else {
-            writeln!(writer, "    {} [{}];", quote_id(id), attrs.join(", "))?;
-        }
-    }
-
-    for edge in &graph.edges {
-        let mut attrs = Vec::new();
-        if let Some(label) = &edge.label {
-            attrs.push(format!("label={}", quote(label)));
-        }
-        for (k, v) in &edge.attrs {
-            attrs.push(format!("{}={}", quote_id(k), quote(v)));
-        }
-
-        if attrs.is_empty() {
-            writeln!(
-                writer,
-                "    {} -> {};",
-                quote_id(&edge.from),
-                quote_id(&edge.to)
-            )?;
-        } else {
-            writeln!(
-                writer,
-                "    {} -> {} [{}];",
-                quote_id(&edge.from),
-                quote_id(&edge.to),
-                attrs.join(", ")
-            )?;
-        }
-    }
+    emit_body(graph, writer, 1)?;
 
     writeln!(writer, "}}")?;
+    Ok(())
+}
+
+/// Emit the body of a graph or subgraph: attrs, subgraphs, nodes, edges.
+fn emit_body(graph: &DepGraph, writer: &mut dyn Write, depth: usize) -> eyre::Result<()> {
+    let indent = "    ".repeat(depth);
+
+    // Emit graph-level attributes.
+    for (k, v) in &graph.attrs {
+        writeln!(writer, "{indent}{}={};", quote_id(k), quote(v))?;
+    }
+
+    // Emit subgraphs before nodes/edges (matches typical DOT convention).
+    for sg in &graph.subgraphs {
+        emit_subgraph(sg, writer, depth)?;
+    }
+
+    // Emit nodes.
+    for (id, info) in &graph.nodes {
+        emit_node(id, info, writer, depth)?;
+    }
+
+    // Emit edges.
+    for edge in &graph.edges {
+        emit_edge(edge, writer, depth)?;
+    }
+
+    Ok(())
+}
+
+fn emit_node(
+    id: &str,
+    info: &crate::NodeInfo,
+    writer: &mut dyn Write,
+    depth: usize,
+) -> eyre::Result<()> {
+    let indent = "    ".repeat(depth);
+    let mut attrs = Vec::new();
+    if let Some(label) = &info.label {
+        attrs.push(format!("label={}", quote(label)));
+    }
+    for (k, v) in &info.attrs {
+        attrs.push(format!("{}={}", quote_id(k), quote(v)));
+    }
+
+    if attrs.is_empty() {
+        writeln!(writer, "{indent}{};", quote_id(id))?;
+    } else {
+        writeln!(writer, "{indent}{} [{}];", quote_id(id), attrs.join(", "))?;
+    }
+    Ok(())
+}
+
+fn emit_edge(edge: &crate::Edge, writer: &mut dyn Write, depth: usize) -> eyre::Result<()> {
+    let indent = "    ".repeat(depth);
+    let mut attrs = Vec::new();
+    if let Some(label) = &edge.label {
+        attrs.push(format!("label={}", quote(label)));
+    }
+    for (k, v) in &edge.attrs {
+        attrs.push(format!("{}={}", quote_id(k), quote(v)));
+    }
+
+    if attrs.is_empty() {
+        writeln!(
+            writer,
+            "{indent}{} -> {};",
+            quote_id(&edge.from),
+            quote_id(&edge.to)
+        )?;
+    } else {
+        writeln!(
+            writer,
+            "{indent}{} -> {} [{}];",
+            quote_id(&edge.from),
+            quote_id(&edge.to),
+            attrs.join(", ")
+        )?;
+    }
+    Ok(())
+}
+
+fn emit_subgraph(sg: &DepGraph, writer: &mut dyn Write, depth: usize) -> eyre::Result<()> {
+    let indent = "    ".repeat(depth);
+
+    if let Some(id) = &sg.id {
+        writeln!(writer, "{indent}subgraph {} {{", quote_id(id))?;
+    } else {
+        writeln!(writer, "{indent}subgraph {{")?;
+    }
+
+    emit_body(sg, writer, depth + 1)?;
+
+    writeln!(writer, "{indent}}}")?;
     Ok(())
 }
 
@@ -416,9 +462,10 @@ digraph {
     #[test]
     fn graph_name_emitted() {
         let graph = DepGraph {
-            attrs: IndexMap::from([("name".into(), "deps".into())]),
+            id: Some("deps".into()),
             nodes: IndexMap::new(),
             edges: vec![],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(output, "digraph deps {\n}\n");
@@ -427,12 +474,11 @@ digraph {
     #[test]
     fn graph_attrs_emitted() {
         let graph = DepGraph {
-            attrs: IndexMap::from([
-                ("name".into(), "deps".into()),
-                ("rankdir".into(), "LR".into()),
-            ]),
+            id: Some("deps".into()),
+            attrs: IndexMap::from([("rankdir".into(), "LR".into())]),
             nodes: IndexMap::new(),
             edges: vec![],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
@@ -448,10 +494,8 @@ digraph deps {
     #[test]
     fn graph_and_node_and_edge_attrs_combined() {
         let graph = DepGraph {
-            attrs: IndexMap::from([
-                ("name".into(), "deps".into()),
-                ("rankdir".into(), "LR".into()),
-            ]),
+            id: Some("deps".into()),
+            attrs: IndexMap::from([("rankdir".into(), "LR".into())]),
             nodes: IndexMap::from([
                 (
                     "a".into(),
@@ -471,6 +515,7 @@ digraph deps {
                 ]),
                 ..Default::default()
             }],
+            ..Default::default()
         };
         let output = emit_to_string(&graph);
         assert_eq!(
@@ -481,6 +526,49 @@ digraph deps {
     a [label=\"A\", shape=\"box\"];
     b;
     a -> b [style=\"dashed\", color=\"red\"];
+}
+"
+        );
+    }
+
+    #[test]
+    fn subgraph_emitted() {
+        let graph = DepGraph {
+            nodes: IndexMap::from([("top".into(), NodeInfo::default())]),
+            subgraphs: vec![DepGraph {
+                id: Some("cluster0".into()),
+                attrs: IndexMap::from([("label".into(), "Group A".into())]),
+                nodes: IndexMap::from([
+                    ("a".into(), NodeInfo::default()),
+                    ("b".into(), NodeInfo::default()),
+                ]),
+                edges: vec![Edge {
+                    from: "a".into(),
+                    to: "b".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            edges: vec![Edge {
+                from: "top".into(),
+                to: "a".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(
+            output,
+            "\
+digraph {
+    subgraph cluster0 {
+        label=\"Group A\";
+        a;
+        b;
+        a -> b;
+    }
+    top;
+    top -> a;
 }
 "
         );

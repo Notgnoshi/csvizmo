@@ -353,3 +353,55 @@ digraph deps {
 "
     );
 }
+
+#[cfg(feature = "dot")]
+#[test]
+fn cmake_dot_preserves_subgraph() {
+    let input = include_str!("../../../data/depconv/cmake.geos.dot");
+
+    // Parse -> emit -> re-parse.
+    let output1 = tool!("depconv")
+        .args(["--from", "dot", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output1.status.success());
+    let dot1 = String::from_utf8_lossy(&output1.stdout);
+
+    let output2 = tool!("depconv")
+        .args(["--from", "dot", "--to", "dot"])
+        .write_stdin(dot1.as_ref())
+        .captured_output()
+        .unwrap();
+    assert!(output2.status.success());
+    let dot2 = String::from_utf8_lossy(&output2.stdout);
+
+    // Round-trip should be stable: emit(parse(emit(parse(input)))) == emit(parse(input)).
+    assert_eq!(dot1, dot2);
+
+    // Structural checks on the output: subgraph present, legend nodes inside.
+    assert!(
+        dot1.contains("subgraph clusterLegend {"),
+        "output should contain subgraph header"
+    );
+    assert!(
+        dot1.contains("legendNode0"),
+        "legend nodes should be in output"
+    );
+
+    // Legend attrs should be inside the subgraph, not at top level.
+    // Find the subgraph block and verify label is inside it.
+    let sg_start = dot1.find("subgraph clusterLegend {").unwrap();
+    let sg_end = dot1[sg_start..].find('}').unwrap() + sg_start;
+    let sg_block = &dot1[sg_start..=sg_end];
+    assert!(
+        sg_block.contains("label=\"Legend\""),
+        "legend label should be inside subgraph block"
+    );
+
+    // Top-level graph name preserved.
+    assert!(
+        dot1.starts_with("digraph GEOS {"),
+        "graph name GEOS should be preserved"
+    );
+}
