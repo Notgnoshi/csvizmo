@@ -327,6 +327,47 @@ fn tree_auto_detect_content() {
     );
 }
 
+#[test]
+fn pathlist_roundtrip() {
+    let input = "src/a.rs\nsrc/b.rs\nREADME.md\n";
+    let output = tool!("depconv")
+        .args(["--from", "pathlist", "--to", "pathlist"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, input);
+}
+
+#[test]
+fn tgf_to_pathlist() {
+    // a -> b -> c, a -> c (diamond: c is shared)
+    let input = "a\tAlpha\nb\tBravo\nc\tCharlie\n#\na\tb\na\tc\nb\tc\n";
+    let output = tool!("depconv")
+        .args(["--from", "tgf", "--to", "pathlist"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // DFS: Alpha -> Bravo -> Charlie (leaf), Alpha -> Charlie (leaf again, no subtree suppressed)
+    assert_eq!(stdout, "Alpha/Bravo/Charlie\nAlpha/Charlie\n");
+}
+
+#[test]
+fn pathlist_to_pathlist_fixture() {
+    let input = include_str!("../../../data/depconv/gitfiles.txt");
+    let output = tool!("depconv")
+        .args(["--from", "pathlist", "--to", "pathlist"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, input);
+}
+
 #[cfg(feature = "dot")]
 #[test]
 fn dot_to_dot() {

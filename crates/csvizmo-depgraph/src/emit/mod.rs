@@ -1,5 +1,6 @@
 mod depfile;
 pub(crate) mod dot;
+mod pathlist;
 mod tgf;
 mod walk;
 
@@ -12,11 +13,12 @@ use crate::{DepGraph, OutputFormat};
 /// Not every format can represent all graph features. The table below
 /// summarises what each emitter preserves:
 ///
-/// | Format  | Graph attrs | Node label | Node attrs | Edge label | Edge attrs |
-/// |---------|-------------|------------|------------|------------|------------|
-/// | DOT     | yes         | yes        | yes        | yes        | yes        |
-/// | TGF     | dropped     | yes        | dropped    | yes        | dropped    |
-/// | Depfile | dropped     | dropped    | dropped    | dropped    | dropped    |
+/// | Format   | Graph attrs | Node label | Node attrs | Edge label | Edge attrs |
+/// |----------|-------------|------------|------------|------------|------------|
+/// | DOT      | yes         | yes        | yes        | yes        | yes        |
+/// | TGF      | dropped     | yes        | dropped    | yes        | dropped    |
+/// | Pathlist | dropped     | yes        | dropped    | dropped    | dropped    |
+/// | Depfile  | dropped     | dropped    | dropped    | dropped    | dropped    |
 ///
 /// Features marked "dropped" are silently discarded. Converting from a
 /// rich format (e.g. DOT) to a lossy one (e.g. Depfile) is intentionally
@@ -27,6 +29,7 @@ pub fn emit(format: OutputFormat, graph: &DepGraph, writer: &mut dyn Write) -> e
         OutputFormat::Dot => dot::emit(graph, writer),
         OutputFormat::Tgf => tgf::emit(graph, writer),
         OutputFormat::Depfile => depfile::emit(graph, writer),
+        OutputFormat::Pathlist => pathlist::emit(graph, writer),
         _ => eyre::bail!("{format:?} emitting not yet implemented"),
     }
 }
