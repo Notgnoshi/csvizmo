@@ -1,6 +1,7 @@
 mod depfile;
 pub(crate) mod dot;
 mod tgf;
+mod walk;
 
 use std::io::Write;
 
