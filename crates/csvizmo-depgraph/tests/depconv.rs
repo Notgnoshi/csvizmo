@@ -490,3 +490,54 @@ fn cmake_dot_preserves_subgraph() {
         "graph name GEOS should be preserved"
     );
 }
+
+#[test]
+fn cargo_tree_to_dot() {
+    let input = "\
+myapp v1.0.0
+├── libfoo v0.2.1
+│   └── shared v1.0.0
+└── libbar v0.1.0 (proc-macro)
+    └── shared v1.0.0 (*)
+";
+    let output = tool!("depconv")
+        .args(["--from", "cargo-tree", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    \"myapp v1.0.0\" [label=\"myapp\", version=\"v1.0.0\"];
+    \"libfoo v0.2.1\" [label=\"libfoo\", version=\"v0.2.1\"];
+    \"shared v1.0.0\" [label=\"shared\", version=\"v1.0.0\"];
+    \"libbar v0.1.0\" [label=\"libbar\", kind=\"proc-macro\", version=\"v0.1.0\"];
+    \"myapp v1.0.0\" -> \"libfoo v0.2.1\";
+    \"libfoo v0.2.1\" -> \"shared v1.0.0\";
+    \"myapp v1.0.0\" -> \"libbar v0.1.0\";
+    \"libbar v0.1.0\" -> \"shared v1.0.0\";
+}
+"
+    );
+}
+
+#[test]
+fn cargo_tree_auto_detect() {
+    let input = include_str!("../../../data/depconv/cargo-tree.txt");
+    let output = tool!("depconv")
+        .args(["--to", "tgf"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should auto-detect as cargo-tree and produce valid TGF
+    assert!(stdout.contains("#\n"));
+    // Root node should be in the output
+    assert!(stdout.contains("csvizmo-depgraph v0.5.0"));
+    // A known dependency should appear
+    assert!(stdout.contains("clap v4.5.57"));
+}
