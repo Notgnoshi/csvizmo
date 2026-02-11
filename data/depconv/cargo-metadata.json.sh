@@ -1,10 +1,4 @@
 #!/bin/sh
-# Pruned cargo metadata for the csvizmo workspace.
-# Packages trimmed to name + version + target kinds.
-# Local paths replaced with ~/src/csvizmo.
+# Full cargo metadata for the csvizmo workspace with local paths replaced.
 cd "$(git rev-parse --show-toplevel)" || exit 1
-cargo metadata --format-version=1 | jq '{
-  packages: [.packages[] | {name, version, targets: [.targets[] | {name, kind}]}],
-  resolve,
-  version
-}' | sed "s|$HOME|~|g"
+cargo metadata --format-version=1 | sed "s|$HOME|~|g" | jq --indent 4

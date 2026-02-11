@@ -541,3 +541,35 @@ fn cargo_tree_auto_detect() {
     // A known dependency should appear
     assert!(stdout.contains("clap v4.5.57"));
 }
+
+#[test]
+fn cargo_metadata_to_dot() {
+    // Test with the real cargo-metadata.json fixture
+    let input = include_str!("../../../data/depconv/cargo-metadata.json");
+    let output = tool!("depconv")
+        .args(["--from", "cargo-metadata", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Verify basic DOT structure
+    assert!(stdout.contains("digraph"));
+
+    // Verify csvizmo-depgraph node exists with proper attributes
+    assert!(stdout.contains("\"csvizmo-depgraph 0.5.0\""));
+    assert!(stdout.contains("label=\"csvizmo-depgraph\""));
+    assert!(stdout.contains("version=\"0.5.0\""));
+
+    // Verify optional dependencies are marked correctly
+    assert!(stdout.contains(
+        "\"csvizmo-depgraph 0.5.0\" -> \"dot-parser 0.6.1\" [kind=\"normal\", optional=\"dot\"]"
+    ));
+    assert!(stdout.contains(
+        "\"csvizmo-depgraph 0.5.0\" -> \"either 1.15.0\" [kind=\"normal\", optional=\"dot\"]"
+    ));
+
+    // Verify regular dependencies don't have optional attribute
+    assert!(stdout.contains("\"csvizmo-depgraph 0.5.0\" -> \"eyre 0.6.12\""));
+}

@@ -9,6 +9,7 @@ rust-version.workspace = true
 description = "Dependency graph utilities"
 
 [dependencies]
+cargo_metadata.workspace = true
 clap.workspace = true
 color-eyre.workspace = true
 csvizmo-utils.workspace = true
@@ -16,6 +17,8 @@ dot-parser = { workspace = true, optional = true }
 either = { workspace = true, optional = true }
 eyre.workspace = true
 indexmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
