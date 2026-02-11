@@ -39,8 +39,13 @@ fn id_to_string(id: &ast::ID) -> String {
 }
 
 pub fn parse(input: &str) -> eyre::Result<DepGraph> {
-    let ast_graph: AstGraph =
-        ast::Graph::try_from(input).map_err(|e| eyre::eyre!("DOT parse error: {e}"))?;
+    // Preprocess input to work around dot-parser limitations.
+    // cargo-depgraph generates empty attribute lists "[ ]" which are valid DOT
+    // but rejected by dot-parser. Remove them before parsing.
+    let preprocessed = input.replace(" [ ]", "").replace(" []", "");
+
+    let ast_graph: AstGraph = ast::Graph::try_from(preprocessed.as_str())
+        .map_err(|e| eyre::eyre!("DOT parse error: {e}"))?;
 
     let mut dep = DepGraph {
         id: ast_graph.name.map(|n| unquote(&n)),
@@ -120,10 +125,62 @@ fn collect_subgraph(sub: &AstSubgraph) -> DepGraph {
     dep
 }
 
+/// Map well-known style values to semantic node types.
+///
+/// Different tools use style attributes to convey semantic information:
+/// - cargo-depgraph uses dashed style for optional/feature-gated dependencies
+///
+/// This mapping is best-effort: it captures known conventions but isn't
+/// exhaustive. Unrecognized styles are left in attrs and node_type stays None.
+fn style_to_node_type(style: &str) -> Option<&'static str> {
+    match style {
+        // cargo-depgraph output
+        "dashed" => Some("optional"),
+        // Default or unknown styles
+        _ => None,
+    }
+}
+
+/// Map well-known shape values to semantic node types.
+///
+/// Different tools use different shape conventions:
+/// - CMake uses a rich shape vocabulary (egg, octagon, doubleoctagon, etc.)
+/// - Ninja uses ellipse for build rules
+/// - cargo-depgraph uses box for workspace members (not mapped due to ambiguity)
+/// - Many tools don't use shapes semantically at all
+///
+/// This mapping is best-effort: it captures known conventions but isn't
+/// exhaustive. Unrecognized shapes are left in attrs and node_type stays None.
+///
+/// Note: `box` is NOT mapped because it's ambiguous (CMake custom-target vs
+/// cargo-depgraph workspace member vs Ninja default). The shape is preserved
+/// in attrs for tools that need it.
+fn shape_to_node_type(shape: &str) -> Option<&'static str> {
+    match shape {
+        // CMake graphviz output
+        "egg" => Some("executable"),
+        "octagon" => Some("static-library"),
+        "doubleoctagon" => Some("shared-library"),
+        "tripleoctagon" => Some("module-library"),
+        "pentagon" => Some("interface-library"),
+        "hexagon" => Some("object-library"),
+        "septagon" => Some("unknown-library"),
+        // NOT mapping "box": too ambiguous across tools (CMake custom-target,
+        // cargo-depgraph workspace, Ninja file target)
+        // Ninja output
+        "ellipse" => Some("build-rule"),
+        // Default or unknown shapes
+        _ => None,
+    }
+}
+
 /// Add a node from a NodeStmt into the DepGraph, returning the unquoted node ID.
 fn add_node(node_stmt: &ast::NodeStmt<(ast::ID, ast::ID)>, dep: &mut DepGraph) -> String {
     let id = unquote(&node_stmt.node.id);
     let mut info = NodeInfo::default();
+    let mut explicit_type = None;
+    let mut shape_value = None;
+    let mut style_value = None;
 
     if let Some(attr_list) = &node_stmt.attr {
         for alist in &attr_list.elems {
@@ -135,7 +192,15 @@ fn add_node(node_stmt: &ast::NodeStmt<(ast::ID, ast::ID)>, dep: &mut DepGraph) -
                         info.label = Some(value);
                     }
                     "type" => {
-                        info.node_type = Some(crate::normalize_node_type(&value));
+                        explicit_type = Some(crate::normalize_node_type(&value));
+                    }
+                    "shape" => {
+                        shape_value = Some(value.clone());
+                        info.attrs.insert(key, value);
+                    }
+                    "style" => {
+                        style_value = Some(value.clone());
+                        info.attrs.insert(key, value);
                     }
                     _ => {
                         info.attrs.insert(key, value);
@@ -144,6 +209,21 @@ fn add_node(node_stmt: &ast::NodeStmt<(ast::ID, ast::ID)>, dep: &mut DepGraph) -
             }
         }
     }
+
+    // Priority: explicit type > style > shape (style is more specific than shape)
+    info.node_type = explicit_type
+        .or_else(|| {
+            style_value
+                .as_deref()
+                .and_then(style_to_node_type)
+                .map(String::from)
+        })
+        .or_else(|| {
+            shape_value
+                .as_deref()
+                .and_then(shape_to_node_type)
+                .map(String::from)
+        });
 
     dep.nodes.insert(id.clone(), info);
     id
@@ -409,17 +489,22 @@ mod tests {
     #[test]
     fn shape_attr_in_attrs() {
         let graph = parse(r#"digraph { a [shape=box]; }"#).unwrap();
+        // shape is preserved in attrs
         assert_eq!(
             graph.nodes["a"].attrs.get("shape").map(|s| s.as_str()),
             Some("box")
         );
+        // box is NOT mapped to node_type (too ambiguous)
+        assert_eq!(graph.nodes["a"].node_type, None);
     }
 
     #[test]
-    fn type_and_shape_coexist_in_attrs() {
+    fn type_and_shape_coexist() {
         let graph = parse(r#"digraph { a [shape=box, type="lib"]; }"#).unwrap();
+        // Explicit type takes precedence over shape-inferred type
         assert_eq!(graph.nodes["a"].node_type.as_deref(), Some("lib"));
         assert!(!graph.nodes["a"].attrs.contains_key("type"));
+        // shape is still preserved in attrs
         assert_eq!(
             graph.nodes["a"].attrs.get("shape").map(|s| s.as_str()),
             Some("box")
@@ -811,5 +896,226 @@ mod tests {
         assert_eq!(adj.get("a").map(|v| v.as_slice()), Some(["b"].as_slice()));
         assert_eq!(adj.get("b").map(|v| v.as_slice()), Some(["c"].as_slice()));
         assert_eq!(adj.get("c").map(|v| v.as_slice()), Some(["d"].as_slice()));
+    }
+
+    #[test]
+    fn cmake_shapes_to_node_type() {
+        let graph = parse(
+            r#"digraph {
+                a [shape=egg];
+                b [shape=octagon];
+                c [shape=doubleoctagon];
+                d [shape=tripleoctagon];
+                e [shape=pentagon];
+                f [shape=hexagon];
+                g [shape=septagon];
+                h [shape=box];
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(graph.nodes["a"].node_type.as_deref(), Some("executable"));
+        assert_eq!(
+            graph.nodes["b"].node_type.as_deref(),
+            Some("static-library")
+        );
+        assert_eq!(
+            graph.nodes["c"].node_type.as_deref(),
+            Some("shared-library")
+        );
+        assert_eq!(
+            graph.nodes["d"].node_type.as_deref(),
+            Some("module-library")
+        );
+        assert_eq!(
+            graph.nodes["e"].node_type.as_deref(),
+            Some("interface-library")
+        );
+        assert_eq!(
+            graph.nodes["f"].node_type.as_deref(),
+            Some("object-library")
+        );
+        assert_eq!(
+            graph.nodes["g"].node_type.as_deref(),
+            Some("unknown-library")
+        );
+        // box is not mapped (ambiguous across tools)
+        assert_eq!(graph.nodes["h"].node_type, None);
+    }
+
+    #[test]
+    fn ninja_shapes_to_node_type() {
+        let graph = parse(
+            r#"digraph {
+                a [label="phony", shape=ellipse];
+                b [label="file.o", shape=box];
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(graph.nodes["a"].node_type.as_deref(), Some("build-rule"));
+        // box is not mapped (ambiguous)
+        assert_eq!(graph.nodes["b"].node_type, None);
+    }
+
+    #[test]
+    fn unknown_shape_no_node_type() {
+        let graph = parse(r#"digraph { a [shape=triangle]; }"#).unwrap();
+        assert_eq!(graph.nodes["a"].node_type, None);
+        assert_eq!(
+            graph.nodes["a"].attrs.get("shape").map(|s| s.as_str()),
+            Some("triangle")
+        );
+    }
+
+    #[test]
+    fn explicit_type_overrides_shape() {
+        let graph = parse(r#"digraph { a [shape=egg, type="special"]; }"#).unwrap();
+        // Explicit type wins
+        assert_eq!(graph.nodes["a"].node_type.as_deref(), Some("special"));
+        // Shape still preserved
+        assert_eq!(
+            graph.nodes["a"].attrs.get("shape").map(|s| s.as_str()),
+            Some("egg")
+        );
+    }
+
+    #[test]
+    fn fixture_cmake_geos_node_types() {
+        let input = include_str!("../../../../data/depconv/cmake.geos.dot");
+        let graph = parse(input).unwrap();
+
+        // Executables (egg shape)
+        assert_eq!(
+            graph.nodes["node5"].node_type.as_deref(),
+            Some("executable")
+        );
+        assert_eq!(
+            graph.nodes["node6"].node_type.as_deref(),
+            Some("executable")
+        );
+
+        // Shared libraries (doubleoctagon)
+        assert_eq!(
+            graph.nodes["node0"].node_type.as_deref(),
+            Some("shared-library")
+        );
+        assert_eq!(
+            graph.nodes["node4"].node_type.as_deref(),
+            Some("shared-library")
+        );
+
+        // Interface libraries (pentagon)
+        assert_eq!(
+            graph.nodes["node1"].node_type.as_deref(),
+            Some("interface-library")
+        );
+        assert_eq!(
+            graph.nodes["node8"].node_type.as_deref(),
+            Some("interface-library")
+        );
+
+        // Object library (hexagon)
+        assert_eq!(
+            graph.nodes["node3"].node_type.as_deref(),
+            Some("object-library")
+        );
+
+        // Static library (octagon)
+        assert_eq!(
+            graph.nodes["node10"].node_type.as_deref(),
+            Some("static-library")
+        );
+
+        // Legend nodes should have types for mapped shapes
+        assert_eq!(
+            graph.subgraphs[0].nodes["legendNode0"].node_type.as_deref(),
+            Some("executable")
+        );
+        // legendNode7 is box (custom target) - not mapped due to ambiguity
+        assert_eq!(graph.subgraphs[0].nodes["legendNode7"].node_type, None);
+    }
+
+    #[test]
+    fn cargo_depgraph_style_to_node_type() {
+        let graph = parse(
+            r#"digraph {
+                a [label="csvizmo-depgraph", shape=box];
+                b [label="dot-parser", style=dashed];
+                c [label="serde"];
+            }"#,
+        )
+        .unwrap();
+        // Workspace crate (box shape) - shape not mapped, but preserved in attrs
+        assert_eq!(graph.nodes["a"].node_type, None);
+        assert_eq!(
+            graph.nodes["a"].attrs.get("shape").map(|s| s.as_str()),
+            Some("box")
+        );
+        // Optional dependency (dashed style)
+        assert_eq!(graph.nodes["b"].node_type.as_deref(), Some("optional"));
+        // Regular dependency (no attrs)
+        assert_eq!(graph.nodes["c"].node_type, None);
+    }
+
+    #[test]
+    fn style_overrides_shape() {
+        let graph = parse(r#"digraph { a [shape=egg, style=dashed]; }"#).unwrap();
+        // style takes precedence over shape
+        assert_eq!(graph.nodes["a"].node_type.as_deref(), Some("optional"));
+        // Both preserved in attrs
+        assert_eq!(
+            graph.nodes["a"].attrs.get("shape").map(|s| s.as_str()),
+            Some("egg")
+        );
+        assert_eq!(
+            graph.nodes["a"].attrs.get("style").map(|s| s.as_str()),
+            Some("dashed")
+        );
+    }
+
+    #[test]
+    fn unknown_style_no_node_type() {
+        let graph = parse(r#"digraph { a [style=dotted]; }"#).unwrap();
+        assert_eq!(graph.nodes["a"].node_type, None);
+        assert_eq!(
+            graph.nodes["a"].attrs.get("style").map(|s| s.as_str()),
+            Some("dotted")
+        );
+    }
+
+    #[test]
+    fn fixture_cargo_depgraph() {
+        let input = include_str!("../../../../data/depconv/cargo-depgraph.dot");
+        let graph = parse(input).unwrap();
+
+        // Workspace crates have shape=box (not mapped, but preserved)
+        assert_eq!(graph.nodes["0"].node_type, None);
+        assert_eq!(
+            graph.nodes["0"].attrs.get("shape").map(|s| s.as_str()),
+            Some("box")
+        );
+        assert_eq!(graph.nodes["4"].node_type, None);
+        assert_eq!(
+            graph.nodes["4"].attrs.get("shape").map(|s| s.as_str()),
+            Some("box")
+        );
+
+        // Optional dependencies have style=dashed
+        assert_eq!(
+            graph.nodes["19"].node_type.as_deref(),
+            Some("optional"),
+            "dot-parser should be optional"
+        );
+        assert_eq!(
+            graph.nodes["32"].node_type.as_deref(),
+            Some("optional"),
+            "color-spantrace should be optional"
+        );
+
+        // Regular external dependencies have no type
+        assert_eq!(
+            graph.nodes["7"].node_type, None,
+            "byteorder should have no type"
+        );
+        assert_eq!(graph.nodes["8"].node_type, None, "clap should have no type");
     }
 }
