@@ -103,6 +103,9 @@ fn emit_node(
     if let Some(label) = &info.label {
         attrs.push(format!("label={}", quote(label)));
     }
+    if let Some(node_type) = &info.node_type {
+        attrs.push(format!("type={}", quote(node_type)));
+    }
     for (k, v) in &info.attrs {
         attrs.push(format!("{}={}", quote_id(k), quote(v)));
     }
@@ -278,6 +281,7 @@ digraph {
                     ("shape".into(), "box".into()),
                     ("version".into(), "1.0".into()),
                 ]),
+                ..Default::default()
             },
         );
         let graph = DepGraph {
@@ -527,6 +531,7 @@ digraph deps {
                     NodeInfo {
                         label: Some("A".into()),
                         attrs: IndexMap::from([("shape".into(), "box".into())]),
+                        ..Default::default()
                     },
                 ),
                 ("b".into(), NodeInfo::default()),
@@ -597,5 +602,65 @@ digraph {
 }
 "
         );
+    }
+
+    #[test]
+    fn node_type_emitted() {
+        let mut nodes = IndexMap::new();
+        nodes.insert(
+            "mylib".into(),
+            NodeInfo {
+                label: Some("My Library".into()),
+                node_type: Some("lib".into()),
+                ..Default::default()
+            },
+        );
+        let graph = DepGraph {
+            nodes,
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        assert!(output.contains(r#"type="lib""#));
+        assert!(output.contains(r#"[label="My Library", type="lib"]"#));
+    }
+
+    #[test]
+    fn node_type_ordering() {
+        let mut nodes = IndexMap::new();
+        nodes.insert(
+            "mylib".into(),
+            NodeInfo {
+                label: Some("My Library".into()),
+                node_type: Some("proc-macro".into()),
+                attrs: IndexMap::from([("version".into(), "1.0".into())]),
+            },
+        );
+        let graph = DepGraph {
+            nodes,
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        // Verify type appears after label, before other attrs
+        assert!(output.contains(r#"[label="My Library", type="proc-macro", version="1.0"]"#));
+    }
+
+    #[test]
+    fn node_type_none_omitted() {
+        let mut nodes = IndexMap::new();
+        nodes.insert(
+            "mylib".into(),
+            NodeInfo {
+                label: Some("My Library".into()),
+                node_type: None,
+                attrs: IndexMap::from([("version".into(), "1.0".into())]),
+            },
+        );
+        let graph = DepGraph {
+            nodes,
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        assert!(!output.contains("type="));
+        assert!(output.contains(r#"[label="My Library", version="1.0"]"#));
     }
 }

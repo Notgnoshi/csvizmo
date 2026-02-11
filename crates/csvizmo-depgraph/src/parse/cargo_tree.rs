@@ -49,9 +49,12 @@ fn parse_line(line: &str) -> Option<(usize, &str)> {
 /// The node ID is the crate name (without version). The version is stored in
 /// `attrs["version"]`. Strips trailing `(*)` duplicate markers and parenthesized
 /// annotations like `(proc-macro)`, `(build)`, `(dev)`, and local paths.
-fn parse_node_text(text: &str) -> (&str, bool, IndexMap<String, String>) {
+/// Returns (id, is_dup, node_type, attrs) where node_type is populated only for
+/// `(proc-macro)` markers (package type), not `(build)` or `(dev)` (dependency types).
+fn parse_node_text(text: &str) -> (&str, bool, Option<String>, IndexMap<String, String>) {
     let mut rest = text;
     let mut is_dup = false;
+    let mut node_type = None;
     let mut attrs = IndexMap::new();
 
     // Strip trailing (*) duplicate marker
@@ -67,8 +70,11 @@ fn parse_node_text(text: &str) -> (&str, bool, IndexMap<String, String>) {
         let before = rest[..open].trim_end();
 
         match annotation {
-            "proc-macro" | "build" | "dev" => {
-                attrs.insert("kind".into(), annotation.into());
+            "proc-macro" => {
+                node_type = Some(crate::normalize_node_type(annotation));
+            }
+            "build" | "dev" => {
+                // Dependency types, not package types - ignore
             }
             _ if annotation.contains('/') || annotation.starts_with('.') => {
                 attrs.insert("path".into(), annotation.into());
@@ -84,7 +90,7 @@ fn parse_node_text(text: &str) -> (&str, bool, IndexMap<String, String>) {
         attrs.insert("version".into(), version.into());
     }
 
-    (rest, is_dup, attrs)
+    (rest, is_dup, node_type, attrs)
 }
 
 /// Split `"name v1.2.3"` into `("name", "v1.2.3")`, or None if no version token.
@@ -122,7 +128,7 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
             eyre::bail!("unexpected depth jump at line: {text:?}");
         }
 
-        let (name, _is_dup, attrs) = parse_node_text(text);
+        let (name, _is_dup, node_type, attrs) = parse_node_text(text);
         let id = name.to_string();
         let label = match split_name_version(name) {
             Some((crate_name, _)) => crate_name.to_string(),
@@ -137,6 +143,7 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
                 id.clone(),
                 NodeInfo {
                     label: Some(label),
+                    node_type,
                     attrs,
                 },
             );
@@ -272,10 +279,8 @@ myapp v1.0.0
         let graph = parse(input).unwrap();
         assert_eq!(graph.nodes.len(), 2);
         let node = &graph.nodes["derive-thing v0.5.0"];
-        assert_eq!(
-            node.attrs.get("kind").map(|s| s.as_str()),
-            Some("proc-macro")
-        );
+        assert_eq!(node.node_type.as_deref(), Some("proc-macro"));
+        assert!(!node.attrs.contains_key("kind"));
         assert_eq!(node.label.as_deref(), Some("derive-thing"));
         assert_eq!(
             node.attrs.get("version").map(|s| s.as_str()),
@@ -314,10 +319,8 @@ myapp v1.0.0
 ";
         let graph = parse(input).unwrap();
         let node = &graph.nodes["mymacro v0.1.0"];
-        assert_eq!(
-            node.attrs.get("kind").map(|s| s.as_str()),
-            Some("proc-macro")
-        );
+        assert_eq!(node.node_type.as_deref(), Some("proc-macro"));
+        assert!(!node.attrs.contains_key("kind"));
         assert_eq!(node.attrs.get("path").map(|s| s.as_str()), Some("my/path"));
     }
 
@@ -435,43 +438,49 @@ myapp v1.0.0
 
     #[test]
     fn parse_node_text_simple() {
-        let (id, is_dup, attrs) = parse_node_text("clap v4.5.57");
+        let (id, is_dup, node_type, attrs) = parse_node_text("clap v4.5.57");
         assert_eq!(id, "clap v4.5.57");
         assert!(!is_dup);
+        assert_eq!(node_type, None);
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v4.5.57"));
     }
 
     #[test]
     fn parse_node_text_dup() {
-        let (id, is_dup, attrs) = parse_node_text("clap v4.5.57 (*)");
+        let (id, is_dup, node_type, attrs) = parse_node_text("clap v4.5.57 (*)");
         assert_eq!(id, "clap v4.5.57");
         assert!(is_dup);
+        assert_eq!(node_type, None);
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v4.5.57"));
     }
 
     #[test]
     fn parse_node_text_proc_macro() {
-        let (id, is_dup, attrs) = parse_node_text("clap_derive v4.5.55 (proc-macro)");
+        let (id, is_dup, node_type, attrs) = parse_node_text("clap_derive v4.5.55 (proc-macro)");
         assert_eq!(id, "clap_derive v4.5.55");
         assert!(!is_dup);
-        assert_eq!(attrs.get("kind").map(|s| s.as_str()), Some("proc-macro"));
+        assert_eq!(node_type.as_deref(), Some("proc-macro"));
+        assert!(!attrs.contains_key("kind"));
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v4.5.55"));
     }
 
     #[test]
     fn parse_node_text_proc_macro_dup() {
-        let (id, is_dup, attrs) = parse_node_text("clap_derive v4.5.55 (proc-macro) (*)");
+        let (id, is_dup, node_type, attrs) =
+            parse_node_text("clap_derive v4.5.55 (proc-macro) (*)");
         assert_eq!(id, "clap_derive v4.5.55");
         assert!(is_dup);
-        assert_eq!(attrs.get("kind").map(|s| s.as_str()), Some("proc-macro"));
+        assert_eq!(node_type.as_deref(), Some("proc-macro"));
+        assert!(!attrs.contains_key("kind"));
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v4.5.55"));
     }
 
     #[test]
     fn parse_node_text_path() {
-        let (id, is_dup, attrs) = parse_node_text("myapp v1.0.0 (my/workspace/path)");
+        let (id, is_dup, node_type, attrs) = parse_node_text("myapp v1.0.0 (my/workspace/path)");
         assert_eq!(id, "myapp v1.0.0");
         assert!(!is_dup);
+        assert_eq!(node_type, None);
         assert_eq!(
             attrs.get("path").map(|s| s.as_str()),
             Some("my/workspace/path")
@@ -481,35 +490,40 @@ myapp v1.0.0
 
     #[test]
     fn parse_node_text_path_and_proc_macro() {
-        let (id, is_dup, attrs) = parse_node_text("mymacro v0.1.0 (my/path) (proc-macro)");
+        let (id, is_dup, node_type, attrs) =
+            parse_node_text("mymacro v0.1.0 (my/path) (proc-macro)");
         assert_eq!(id, "mymacro v0.1.0");
         assert!(!is_dup);
-        assert_eq!(attrs.get("kind").map(|s| s.as_str()), Some("proc-macro"));
+        assert_eq!(node_type.as_deref(), Some("proc-macro"));
+        assert!(!attrs.contains_key("kind"));
         assert_eq!(attrs.get("path").map(|s| s.as_str()), Some("my/path"));
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v0.1.0"));
     }
 
     #[test]
     fn parse_node_text_build_kind() {
-        let (id, _, attrs) = parse_node_text("cc v1.0.0 (build)");
+        let (id, _, node_type, attrs) = parse_node_text("cc v1.0.0 (build)");
         assert_eq!(id, "cc v1.0.0");
-        assert_eq!(attrs.get("kind").map(|s| s.as_str()), Some("build"));
+        assert_eq!(node_type, None);
+        assert!(!attrs.contains_key("kind"));
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v1.0.0"));
     }
 
     #[test]
     fn parse_node_text_dev_kind() {
-        let (id, _, attrs) = parse_node_text("testlib v1.0.0 (dev)");
+        let (id, _, node_type, attrs) = parse_node_text("testlib v1.0.0 (dev)");
         assert_eq!(id, "testlib v1.0.0");
-        assert_eq!(attrs.get("kind").map(|s| s.as_str()), Some("dev"));
+        assert_eq!(node_type, None);
+        assert!(!attrs.contains_key("kind"));
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v1.0.0"));
     }
 
     #[test]
     fn parse_node_text_feature_entry() {
-        let (id, is_dup, attrs) = parse_node_text("clap feature \"default\"");
+        let (id, is_dup, node_type, attrs) = parse_node_text("clap feature \"default\"");
         assert_eq!(id, "clap feature \"default\"");
         assert!(!is_dup);
+        assert_eq!(node_type, None);
         assert!(attrs.get("version").is_none());
     }
 
@@ -535,10 +549,7 @@ myapp v1.0.0
         // Check a few specific nodes
         assert_eq!(graph.nodes["clap v4.5.57"].label.as_deref(), Some("clap"));
         assert_eq!(
-            graph.nodes["clap_derive v4.5.55"]
-                .attrs
-                .get("kind")
-                .map(|s| s.as_str()),
+            graph.nodes["clap_derive v4.5.55"].node_type.as_deref(),
             Some("proc-macro")
         );
 

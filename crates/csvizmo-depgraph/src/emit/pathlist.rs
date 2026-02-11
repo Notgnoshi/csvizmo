@@ -398,6 +398,7 @@ mod tests {
                     NodeInfo {
                         label: Some("a".into()),
                         attrs: IndexMap::from([("shape".into(), "box".into())]),
+                        ..Default::default()
                     },
                 ),
                 (

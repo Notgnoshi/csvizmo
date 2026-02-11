@@ -130,10 +130,16 @@ fn add_node(node_stmt: &ast::NodeStmt<(ast::ID, ast::ID)>, dep: &mut DepGraph) -
             for (k, v) in &alist.elems {
                 let key = unquote(&id_to_string(k));
                 let value = unquote(&id_to_string(v));
-                if key == "label" {
-                    info.label = Some(value);
-                } else {
-                    info.attrs.insert(key, value);
+                match key.as_str() {
+                    "label" => {
+                        info.label = Some(value);
+                    }
+                    "type" => {
+                        info.node_type = Some(crate::normalize_node_type(&value));
+                    }
+                    _ => {
+                        info.attrs.insert(key, value);
+                    }
                 }
             }
         }
@@ -396,10 +402,8 @@ mod tests {
     #[test]
     fn type_attr_in_attrs() {
         let graph = parse(r#"digraph { a [type="lib"]; }"#).unwrap();
-        assert_eq!(
-            graph.nodes["a"].attrs.get("type").map(|s| s.as_str()),
-            Some("lib")
-        );
+        assert_eq!(graph.nodes["a"].node_type.as_deref(), Some("lib"));
+        assert!(!graph.nodes["a"].attrs.contains_key("type"));
     }
 
     #[test]
@@ -414,10 +418,8 @@ mod tests {
     #[test]
     fn type_and_shape_coexist_in_attrs() {
         let graph = parse(r#"digraph { a [shape=box, type="lib"]; }"#).unwrap();
-        assert_eq!(
-            graph.nodes["a"].attrs.get("type").map(|s| s.as_str()),
-            Some("lib")
-        );
+        assert_eq!(graph.nodes["a"].node_type.as_deref(), Some("lib"));
+        assert!(!graph.nodes["a"].attrs.contains_key("type"));
         assert_eq!(
             graph.nodes["a"].attrs.get("shape").map(|s| s.as_str()),
             Some("box")

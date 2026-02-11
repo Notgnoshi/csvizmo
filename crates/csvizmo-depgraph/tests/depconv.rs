@@ -514,7 +514,7 @@ digraph {
     \"myapp v1.0.0\" [label=\"myapp\", version=\"v1.0.0\"];
     \"libfoo v0.2.1\" [label=\"libfoo\", version=\"v0.2.1\"];
     \"shared v1.0.0\" [label=\"shared\", version=\"v1.0.0\"];
-    \"libbar v0.1.0\" [label=\"libbar\", kind=\"proc-macro\", version=\"v0.1.0\"];
+    \"libbar v0.1.0\" [label=\"libbar\", type=\"proc-macro\", version=\"v0.1.0\"];
     \"myapp v1.0.0\" -> \"libfoo v0.2.1\";
     \"libfoo v0.2.1\" -> \"shared v1.0.0\";
     \"myapp v1.0.0\" -> \"libbar v0.1.0\";
@@ -572,4 +572,44 @@ fn cargo_metadata_to_dot() {
 
     // Verify regular dependencies don't have optional attribute
     assert!(stdout.contains("\"csvizmo-depgraph 0.5.0\" -> \"eyre 0.6.12\""));
+
+    // Verify proc-macro nodes have type attribute
+    assert!(stdout.contains("type=\"proc-macro\""));
+    assert!(stdout.contains("\"clap_derive 4.5.55\" [label=\"clap_derive\", type=\"proc-macro\""));
+}
+
+#[test]
+fn dot_roundtrip_with_type() {
+    let input = r#"digraph {
+    a [label="A", type="lib"];
+    b [label="B", type="proc-macro"];
+    a -> b;
+}
+"#;
+
+    // Parse DOT -> emit DOT
+    let output1 = tool!("depconv")
+        .args(["--from", "dot", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output1.status.success());
+    let stdout1 = String::from_utf8_lossy(&output1.stdout);
+
+    // Verify type attributes are preserved
+    assert!(stdout1.contains(r#"type="lib""#));
+    assert!(stdout1.contains(r#"type="proc-macro""#));
+
+    // Parse again to verify round-trip
+    let output2 = tool!("depconv")
+        .args(["--from", "dot", "--to", "dot"])
+        .write_stdin(stdout1.as_bytes())
+        .captured_output()
+        .unwrap();
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8_lossy(&output2.stdout);
+
+    // Second round-trip should still have type attributes
+    assert!(stdout2.contains(r#"type="lib""#));
+    assert!(stdout2.contains(r#"type="proc-macro""#));
 }

@@ -140,9 +140,37 @@ impl DepGraph {
     }
 }
 
+/// Normalize a node type string to a canonical form.
+///
+/// Converts format-specific type names to standardized equivalents:
+/// - `"custom-build"` -> `"build-script"`
+/// - `"rlib"`, `"cdylib"`, `"dylib"`, `"staticlib"` -> `"lib"`
+/// - Already canonical types (`"proc-macro"`, `"bin"`, `"test"`, etc.) pass through
+///
+/// # Examples
+///
+/// ```
+/// use csvizmo_depgraph::normalize_node_type;
+/// assert_eq!(normalize_node_type("custom-build"), "build-script");
+/// assert_eq!(normalize_node_type("proc-macro"), "proc-macro");
+/// assert_eq!(normalize_node_type("rlib"), "lib");
+/// assert_eq!(normalize_node_type("cdylib"), "lib");
+/// ```
+pub fn normalize_node_type(raw: &str) -> String {
+    match raw {
+        "custom-build" => "build-script".to_string(),
+        "rlib" | "cdylib" | "dylib" | "staticlib" => "lib".to_string(),
+        _ => raw.to_string(),
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct NodeInfo {
     pub label: Option<String>,
+    /// Node type/kind (e.g. "lib", "bin", "proc-macro", "build-script").
+    /// Semantics are format-specific on input; normalized to canonical names where possible.
+    /// Formats that don't support types leave this as None.
+    pub node_type: Option<String>,
     /// Arbitrary extra attributes. Parsers populate these from format-specific features;
     /// emitters carry them through where the output format allows.
     pub attrs: IndexMap<String, String>,

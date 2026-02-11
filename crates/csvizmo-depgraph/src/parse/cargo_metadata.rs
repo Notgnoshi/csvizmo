@@ -60,6 +60,46 @@ fn extract_package_name(id: &str) -> String {
     }
 }
 
+/// Extract the primary target kind from a Package using priority order.
+/// Returns the highest-priority type found (e.g., "lib" for a package with lib + examples).
+/// Priority: lib > proc-macro > bin > build-script > test > bench > example
+fn extract_package_types(pkg: &Package) -> Option<String> {
+    let types: Vec<String> = pkg
+        .targets
+        .iter()
+        .flat_map(|t| &t.kind)
+        .map(|k| {
+            let kind_str = k.to_string();
+            crate::normalize_node_type(&kind_str)
+        })
+        .collect();
+
+    if types.is_empty() {
+        return None;
+    }
+
+    // Priority order: most fundamental/important types first
+    const PRIORITY: &[&str] = &[
+        "lib",
+        "proc-macro",
+        "bin",
+        "build-script",
+        "test",
+        "bench",
+        "example",
+    ];
+
+    // Return the first match in priority order
+    for &priority_type in PRIORITY {
+        if types.iter().any(|t| t == priority_type) {
+            return Some(priority_type.to_string());
+        }
+    }
+
+    // Fallback: return the first type if none match the priority list
+    types.into_iter().next()
+}
+
 pub fn parse(input: &str) -> eyre::Result<DepGraph> {
     let metadata: Metadata = serde_json::from_str(input)?;
 
@@ -93,10 +133,15 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
             .map(|pkg| pkg.name.to_string())
             .unwrap_or_else(|| extract_package_name(&node.id.repr));
 
+        let node_type = package_map
+            .get(&node.id)
+            .and_then(|pkg| extract_package_types(pkg));
+
         graph.nodes.insert(
             node_id,
             NodeInfo {
                 label: Some(label),
+                node_type,
                 attrs,
             },
         );

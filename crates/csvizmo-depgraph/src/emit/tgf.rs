@@ -86,6 +86,7 @@ mod tests {
                     ("shape".into(), "box".into()),
                     ("color".into(), "red".into()),
                 ]),
+                ..Default::default()
             },
         );
         nodes.insert("b".into(), NodeInfo::default());
