@@ -2,6 +2,7 @@ mod depfile;
 pub(crate) mod dot;
 mod pathlist;
 mod tgf;
+mod tree;
 mod walk;
 
 use std::io::Write;
@@ -17,6 +18,7 @@ use crate::{DepGraph, OutputFormat};
 /// |----------|-------------|------------|------------|------------|------------|
 /// | DOT      | yes         | yes        | yes        | yes        | yes        |
 /// | TGF      | dropped     | yes        | dropped    | yes        | dropped    |
+/// | Tree     | dropped     | yes        | dropped    | dropped    | dropped    |
 /// | Pathlist | dropped     | yes        | dropped    | dropped    | dropped    |
 /// | Depfile  | dropped     | dropped    | dropped    | dropped    | dropped    |
 ///
@@ -30,6 +32,7 @@ pub fn emit(format: OutputFormat, graph: &DepGraph, writer: &mut dyn Write) -> e
         OutputFormat::Tgf => tgf::emit(graph, writer),
         OutputFormat::Depfile => depfile::emit(graph, writer),
         OutputFormat::Pathlist => pathlist::emit(graph, writer),
+        OutputFormat::Tree => tree::emit(graph, writer),
         _ => eyre::bail!("{format:?} emitting not yet implemented"),
     }
 }

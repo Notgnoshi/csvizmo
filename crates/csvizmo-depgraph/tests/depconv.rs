@@ -328,6 +328,28 @@ fn tree_auto_detect_content() {
 }
 
 #[test]
+fn tgf_to_tree() {
+    // a -> b -> c, a -> d (diamond-like with branching at root)
+    let input = "a\tAlpha\nb\tBravo\nc\tCharlie\nd\tDelta\n#\na\tb\na\td\nb\tc\n";
+    let output = tool!("depconv")
+        .args(["--from", "tgf", "--to", "tree"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+Alpha
+├── Bravo
+│   └── Charlie
+└── Delta
+"
+    );
+}
+
+#[test]
 fn pathlist_roundtrip() {
     let input = "src/a.rs\nsrc/b.rs\nREADME.md\n";
     let output = tool!("depconv")
