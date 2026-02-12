@@ -150,10 +150,32 @@ fn emit_edge(edge: &crate::Edge, writer: &mut dyn Write, depth: usize) -> eyre::
 fn emit_subgraph(sg: &DepGraph, writer: &mut dyn Write, depth: usize) -> eyre::Result<()> {
     let indent = "    ".repeat(depth);
 
+    let added_prefix;
     if let Some(id) = &sg.id {
-        writeln!(writer, "{indent}subgraph {} {{", quote_id(id))?;
+        // GraphViz only renders subgraphs as visual clusters when the name
+        // starts with "cluster". Prefix IDs that don't already have it.
+        if id.starts_with("cluster") {
+            added_prefix = false;
+            writeln!(writer, "{indent}subgraph {} {{", quote_id(id))?;
+        } else {
+            added_prefix = true;
+            writeln!(
+                writer,
+                "{indent}subgraph {} {{",
+                quote_id(&format!("cluster_{id}"))
+            )?;
+        }
     } else {
+        added_prefix = false;
         writeln!(writer, "{indent}subgraph {{")?;
+    }
+
+    // When we added the cluster_ prefix, emit a label with the original ID
+    // so the rendered cluster shows the original name (unless there's already
+    // an explicit label attr).
+    if added_prefix && !sg.attrs.contains_key("label") {
+        let inner = "    ".repeat(depth + 1);
+        writeln!(writer, "{inner}label={};", quote(sg.id.as_deref().unwrap()))?;
     }
 
     emit_body(sg, writer, depth + 1)?;
@@ -632,7 +654,10 @@ digraph {
             NodeInfo {
                 label: Some("My Library".into()),
                 node_type: Some("proc-macro".into()),
-                attrs: IndexMap::from([("version".into(), "1.0".into())]),
+                attrs: IndexMap::from([
+                    ("version".into(), "1.0".into()),
+                    ("shape".into(), "diamond".into()),
+                ]),
             },
         );
         let graph = DepGraph {
@@ -640,8 +665,10 @@ digraph {
             ..Default::default()
         };
         let output = emit_to_string(&graph);
-        // Verify type appears after label, before other attrs
-        assert!(output.contains(r#"[label="My Library", type="proc-macro", version="1.0"]"#));
+        // label first, then type, then attrs in insertion order
+        assert!(output.contains(
+            r#"[label="My Library", type="proc-macro", version="1.0", shape="diamond"]"#
+        ));
     }
 
     #[test]
@@ -662,5 +689,190 @@ digraph {
         let output = emit_to_string(&graph);
         assert!(!output.contains("type="));
         assert!(output.contains(r#"[label="My Library", version="1.0"]"#));
+    }
+
+    #[test]
+    fn node_type_with_shape_attrs() {
+        let mut nodes = IndexMap::new();
+        nodes.insert(
+            "pm".into(),
+            NodeInfo {
+                node_type: Some("proc-macro".into()),
+                attrs: IndexMap::from([("shape".into(), "diamond".into())]),
+                ..Default::default()
+            },
+        );
+        nodes.insert(
+            "mybin".into(),
+            NodeInfo {
+                node_type: Some("bin".into()),
+                attrs: IndexMap::from([("shape".into(), "box".into())]),
+                ..Default::default()
+            },
+        );
+        nodes.insert(
+            "bs".into(),
+            NodeInfo {
+                node_type: Some("build-script".into()),
+                attrs: IndexMap::from([("shape".into(), "note".into())]),
+                ..Default::default()
+            },
+        );
+        nodes.insert(
+            "opt".into(),
+            NodeInfo {
+                node_type: Some("optional".into()),
+                attrs: IndexMap::from([("style".into(), "dashed".into())]),
+                ..Default::default()
+            },
+        );
+        let graph = DepGraph {
+            nodes,
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(
+            output,
+            "\
+digraph {
+    pm [type=\"proc-macro\", shape=\"diamond\"];
+    mybin [type=\"bin\", shape=\"box\"];
+    bs [type=\"build-script\", shape=\"note\"];
+    opt [type=\"optional\", style=\"dashed\"];
+}
+"
+        );
+    }
+
+    #[test]
+    fn node_type_no_override() {
+        let mut nodes = IndexMap::new();
+        nodes.insert(
+            "pm".into(),
+            NodeInfo {
+                node_type: Some("proc-macro".into()),
+                attrs: IndexMap::from([("shape".into(), "box".into())]),
+                ..Default::default()
+            },
+        );
+        let graph = DepGraph {
+            nodes,
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        // Emitter serializes type and attrs as-is
+        assert_eq!(
+            output,
+            "\
+digraph {
+    pm [type=\"proc-macro\", shape=\"box\"];
+}
+"
+        );
+    }
+
+    #[test]
+    fn edge_kind_styled() {
+        let graph = DepGraph {
+            nodes: IndexMap::new(),
+            edges: vec![
+                Edge {
+                    from: "a".into(),
+                    to: "b".into(),
+                    attrs: IndexMap::from([
+                        ("kind".into(), "dev".into()),
+                        ("style".into(), "dashed".into()),
+                        ("color".into(), "gray60".into()),
+                    ]),
+                    ..Default::default()
+                },
+                Edge {
+                    from: "a".into(),
+                    to: "c".into(),
+                    attrs: IndexMap::from([
+                        ("kind".into(), "build".into()),
+                        ("style".into(), "dashed".into()),
+                    ]),
+                    ..Default::default()
+                },
+                Edge {
+                    from: "a".into(),
+                    to: "d".into(),
+                    attrs: IndexMap::from([
+                        ("kind".into(), "normal,build".into()),
+                        ("style".into(), "dashed".into()),
+                    ]),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(
+            output,
+            "\
+digraph {
+    a -> b [kind=\"dev\", style=\"dashed\", color=\"gray60\"];
+    a -> c [kind=\"build\", style=\"dashed\"];
+    a -> d [kind=\"normal,build\", style=\"dashed\"];
+}
+"
+        );
+    }
+
+    #[test]
+    fn edge_kind_no_override() {
+        let graph = DepGraph {
+            nodes: IndexMap::new(),
+            edges: vec![Edge {
+                from: "a".into(),
+                to: "b".into(),
+                attrs: IndexMap::from([
+                    ("kind".into(), "dev".into()),
+                    ("style".into(), "bold".into()),
+                    ("color".into(), "gray60".into()),
+                ]),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        // Emitter serializes all attrs as-is
+        assert_eq!(
+            output,
+            "\
+digraph {
+    a -> b [kind=\"dev\", style=\"bold\", color=\"gray60\"];
+}
+"
+        );
+    }
+
+    #[test]
+    fn no_type_no_styling() {
+        let mut nodes = IndexMap::new();
+        nodes.insert(
+            "plain".into(),
+            NodeInfo {
+                label: Some("Plain".into()),
+                node_type: None,
+                ..Default::default()
+            },
+        );
+        let graph = DepGraph {
+            nodes,
+            ..Default::default()
+        };
+        let output = emit_to_string(&graph);
+        assert_eq!(
+            output,
+            "\
+digraph {
+    plain [label=\"Plain\"];
+}
+"
+        );
+        assert!(!output.contains("shape="));
+        assert!(!output.contains("style="));
     }
 }

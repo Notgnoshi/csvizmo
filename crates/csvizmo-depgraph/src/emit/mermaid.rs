@@ -39,46 +39,32 @@ fn escape_label(s: &str) -> String {
 /// Returns None if the shape doesn't have a good Mermaid equivalent.
 fn dot_shape_to_mermaid(shape: &str, label: &str) -> Option<String> {
     match shape {
+        "box" => Some(format!("[{label}]")),
         "circle" => Some(format!("(({label}))")),
         "ellipse" => Some(format!("([{label}])")),
         "diamond" => Some(format!("{{{label}}}")),
         "hexagon" => Some(format!("{{{{{label}}}}}")),
+        "note" => Some(format!("[/{label}/]")),
         "cylinder" => Some(format!("[({label})]")),
         _ => None,
     }
 }
 
-/// Choose node shape brackets based on node_type and shape attrs.
+/// Choose node shape brackets based on shape attr.
 ///
 /// Mermaid supports various shapes via bracket syntax:
 /// - `[label]` - rectangle (default)
 /// - `([label])` - stadium/pill shape
-/// - `[[label]]` - subroutine
-/// - `[(label)]` - cylindrical (database)
 /// - `((label))` - circle
 /// - `{label}` - rhombus/diamond
 /// - `{{label}}` - hexagon
 /// - `[/label/]` - parallelogram
-/// - `[\label\]` - alt parallelogram
-/// - `[/label\]` - trapezoid
+/// - `[(label)]` - cylindrical (database)
 ///
-/// Priority:
-/// 1. node_type (semantic meaning): lib, bin, proc-macro, build-script, test
-/// 2. shape attribute (visual style): circle, ellipse, diamond, hexagon, etc.
-/// 3. rectangle (default)
+/// The `shape` attr is expected to be populated by `apply_default_styles()`
+/// before emitting, so semantic types like "proc-macro" are already mapped
+/// to DOT shape names (e.g. "diamond") by the time this runs.
 fn node_shape(info: &crate::NodeInfo, label: &str) -> String {
-    // First try node_type (semantic meaning)
-    if let Some(node_type) = &info.node_type {
-        match node_type.as_str() {
-            "lib" => return format!("([{label}])"),
-            "proc-macro" => return format!("{{{{{label}}}}}"),
-            "build-script" | "build" => return format!("[/{label}/]"),
-            "test" => return format!("{{{label}}}"),
-            _ => {}
-        }
-    }
-
-    // Fall back to shape attribute if present (visual style from DOT)
     if let Some(shape) = info.attrs.get("shape")
         && let Some(mermaid_shape) = dot_shape_to_mermaid(shape, label)
     {
@@ -270,13 +256,13 @@ flowchart LR
     }
 
     #[test]
-    fn node_type_shapes() {
+    fn shape_attrs_from_node_types() {
         let mut nodes = IndexMap::new();
         nodes.insert(
             "lib1".into(),
             NodeInfo {
                 label: Some("Library".into()),
-                node_type: Some("lib".into()),
+                attrs: IndexMap::from([("shape".into(), "ellipse".into())]),
                 ..Default::default()
             },
         );
@@ -284,7 +270,7 @@ flowchart LR
             "bin1".into(),
             NodeInfo {
                 label: Some("Binary".into()),
-                node_type: Some("bin".into()),
+                attrs: IndexMap::from([("shape".into(), "box".into())]),
                 ..Default::default()
             },
         );
@@ -292,7 +278,7 @@ flowchart LR
             "pm1".into(),
             NodeInfo {
                 label: Some("Proc Macro".into()),
-                node_type: Some("proc-macro".into()),
+                attrs: IndexMap::from([("shape".into(), "diamond".into())]),
                 ..Default::default()
             },
         );
@@ -300,7 +286,7 @@ flowchart LR
             "bs1".into(),
             NodeInfo {
                 label: Some("Build Script".into()),
-                node_type: Some("build-script".into()),
+                attrs: IndexMap::from([("shape".into(), "note".into())]),
                 ..Default::default()
             },
         );
@@ -308,7 +294,7 @@ flowchart LR
             "test1".into(),
             NodeInfo {
                 label: Some("Test".into()),
-                node_type: Some("test".into()),
+                attrs: IndexMap::from([("shape".into(), "hexagon".into())]),
                 ..Default::default()
             },
         );
@@ -319,9 +305,9 @@ flowchart LR
         let output = emit_to_string(&graph);
         assert!(output.contains("lib1([Library])"));
         assert!(output.contains("bin1[Binary]"));
-        assert!(output.contains("pm1{{Proc Macro}}"));
+        assert!(output.contains("pm1{Proc Macro}"));
         assert!(output.contains("bs1[/Build Script/]"));
-        assert!(output.contains("test1{Test}"));
+        assert!(output.contains("test1{{Test}}"));
     }
 
     #[test]
@@ -547,14 +533,14 @@ flowchart LR
     }
 
     #[test]
-    fn node_type_overrides_shape_attr() {
+    fn explicit_shape_attr_used() {
         let mut nodes = IndexMap::new();
         nodes.insert(
             "lib1".into(),
             NodeInfo {
                 label: Some("Library".into()),
-                node_type: Some("lib".into()),
                 attrs: IndexMap::from([("shape".into(), "box".into())]),
+                ..Default::default()
             },
         );
         let graph = DepGraph {
@@ -562,8 +548,8 @@ flowchart LR
             ..Default::default()
         };
         let output = emit_to_string(&graph);
-        // node_type "lib" should produce stadium shape, not box (rectangle)
-        assert!(output.contains("lib1([Library])"));
+        // shape=box maps to rectangle brackets
+        assert!(output.contains("lib1[Library]"));
     }
 
     #[test]

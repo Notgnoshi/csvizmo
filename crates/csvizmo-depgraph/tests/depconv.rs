@@ -514,7 +514,7 @@ digraph {
     \"myapp v1.0.0\" [label=\"myapp\", version=\"v1.0.0\"];
     \"libfoo v0.2.1\" [label=\"libfoo\", version=\"v0.2.1\"];
     \"shared v1.0.0\" [label=\"shared\", version=\"v1.0.0\"];
-    \"libbar v0.1.0\" [label=\"libbar\", type=\"proc-macro\", version=\"v0.1.0\"];
+    \"libbar v0.1.0\" [label=\"libbar\", type=\"proc-macro\", version=\"v0.1.0\", shape=\"diamond\"];
     \"myapp v1.0.0\" -> \"libfoo v0.2.1\";
     \"libfoo v0.2.1\" -> \"shared v1.0.0\";
     \"myapp v1.0.0\" -> \"libbar v0.1.0\";
@@ -573,9 +573,10 @@ fn cargo_metadata_to_dot() {
     // Verify regular dependencies don't have optional attribute
     assert!(stdout.contains("\"csvizmo-depgraph 0.5.0\" -> \"eyre 0.6.12\""));
 
-    // Verify proc-macro nodes have type attribute
+    // Verify proc-macro nodes have type attribute and shape from default styling
     assert!(stdout.contains("type=\"proc-macro\""));
     assert!(stdout.contains("\"clap_derive 4.5.55\" [label=\"clap_derive\", type=\"proc-macro\""));
+    assert!(stdout.contains("shape=\"diamond\""));
 }
 
 #[test]
@@ -656,12 +657,12 @@ fn mermaid_node_types() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Verify node type shapes
+    // Verify node type shapes (via apply_default_styles -> shape attr -> Mermaid bracket)
     assert!(stdout.contains("lib1([Library])"));
     assert!(stdout.contains("bin1[Binary]"));
-    assert!(stdout.contains("pm1{{Proc Macro}}"));
+    assert!(stdout.contains("pm1{Proc Macro}"));
     assert!(stdout.contains("bs1[/Build Script/]"));
-    assert!(stdout.contains("test1{Test}"));
+    assert!(stdout.contains("test1{{Test}}"));
 }
 
 #[cfg(feature = "dot")]
@@ -835,9 +836,12 @@ fn mermaid_subgraph_to_dot() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Verify subgraph structure preserved
-    assert!(stdout.contains("subgraph backend {"));
-    assert!(stdout.contains("subgraph frontend {"));
+    // Verify subgraph structure preserved (cluster_ prefix added for GraphViz)
+    assert!(stdout.contains("subgraph cluster_backend {"));
+    assert!(stdout.contains("subgraph cluster_frontend {"));
+    // Verify labels use original subgraph names
+    assert!(stdout.contains("label=\"backend\""));
+    assert!(stdout.contains("label=\"frontend\""));
     // Verify nodes are inside subgraphs
     assert!(stdout.contains("api [label=\"API Server\"]"));
     assert!(stdout.contains("db [label=\"Database\"]"));

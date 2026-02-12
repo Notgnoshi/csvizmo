@@ -71,13 +71,15 @@ fn main() -> eyre::Result<()> {
 
     let to = resolve_output_format(args.to, output_path.as_deref())?;
 
-    let graph = csvizmo_depgraph::parse::parse(from, &input_text)?;
+    let mut graph = csvizmo_depgraph::parse::parse(from, &input_text)?;
     tracing::info!(
         "Parsed graph with {} nodes, {} edges, and {} subgraphs",
         graph.all_nodes().len(),
         graph.all_edges().len(),
         graph.subgraphs.len()
     );
+
+    csvizmo_depgraph::style::apply_default_styles(&mut graph);
 
     let mut output = get_output_writer(&output_path)?;
     csvizmo_depgraph::emit::emit(to, &graph, &mut output)?;

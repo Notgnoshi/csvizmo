@@ -7,6 +7,7 @@ use indexmap::IndexMap;
 pub mod detect;
 pub mod emit;
 pub mod parse;
+pub mod style;
 
 /// Variant order defines content-detection priority (most specific first).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]

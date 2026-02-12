@@ -44,17 +44,27 @@ fn parse_line(line: &str) -> Option<(usize, &str)> {
     }
 }
 
-/// Parse the text portion of a cargo tree line, returning (id, label, is_dup, attrs).
+/// Parse the text portion of a cargo tree line.
 ///
-/// The node ID is the crate name (without version). The version is stored in
-/// `attrs["version"]`. Strips trailing `(*)` duplicate markers and parenthesized
-/// annotations like `(proc-macro)`, `(build)`, `(dev)`, and local paths.
-/// Returns (id, is_dup, node_type, attrs) where node_type is populated only for
-/// `(proc-macro)` markers (package type), not `(build)` or `(dev)` (dependency types).
-fn parse_node_text(text: &str) -> (&str, bool, Option<String>, IndexMap<String, String>) {
+/// Returns (id, is_dup, node_type, dep_kind, attrs). The node ID is the full
+/// `"name v1.2.3"` string. The version is also stored in `attrs["version"]`.
+///
+/// - `node_type`: crate type, populated for `(proc-macro)` markers.
+/// - `dep_kind`: dependency kind from `(build)` or `(dev)` annotations.
+///   This describes the edge from parent to this node, not the node itself.
+fn parse_node_text(
+    text: &str,
+) -> (
+    &str,
+    bool,
+    Option<String>,
+    Option<&'static str>,
+    IndexMap<String, String>,
+) {
     let mut rest = text;
     let mut is_dup = false;
     let mut node_type = None;
+    let mut dep_kind = None;
     let mut attrs = IndexMap::new();
 
     // Strip trailing (*) duplicate marker
@@ -73,9 +83,8 @@ fn parse_node_text(text: &str) -> (&str, bool, Option<String>, IndexMap<String, 
             "proc-macro" => {
                 node_type = Some(crate::normalize_node_type(annotation));
             }
-            "build" | "dev" => {
-                // Dependency types, not package types - ignore
-            }
+            "build" => dep_kind = Some("build"),
+            "dev" => dep_kind = Some("dev"),
             _ if annotation.contains('/') || annotation.starts_with('.') => {
                 attrs.insert("path".into(), annotation.into());
             }
@@ -90,7 +99,7 @@ fn parse_node_text(text: &str) -> (&str, bool, Option<String>, IndexMap<String, 
         attrs.insert("version".into(), version.into());
     }
 
-    (rest, is_dup, node_type, attrs)
+    (rest, is_dup, node_type, dep_kind, attrs)
 }
 
 /// Split `"name v1.2.3"` into `("name", "v1.2.3")`, or None if no version token.
@@ -104,10 +113,24 @@ fn split_name_version(text: &str) -> Option<(&str, &str)> {
     None
 }
 
+/// Parse a section header like `[dev-dependencies]` or `[build-dependencies]`.
+/// Returns the dependency kind for the section, or None if not a section header.
+fn parse_section(line: &str) -> Option<&'static str> {
+    let trimmed = line.trim();
+    match trimmed {
+        "[dev-dependencies]" => Some("dev"),
+        "[build-dependencies]" => Some("build"),
+        _ => None,
+    }
+}
+
 pub fn parse(input: &str) -> eyre::Result<DepGraph> {
     let mut graph = DepGraph::default();
     // stack[i] = node ID at depth i
     let mut stack: Vec<String> = Vec::new();
+    // Current section kind (from [dev-dependencies] / [build-dependencies] headers).
+    // Applies to depth-1 edges (root -> direct child) only.
+    let mut section_kind: Option<&str> = None;
 
     for raw_line in input.lines() {
         // Normalize NO-BREAK SPACE (U+00A0) to ASCII space
@@ -119,6 +142,12 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
             raw_line
         };
 
+        // Check for section headers before tree-line parsing
+        if let Some(kind) = parse_section(line) {
+            section_kind = Some(kind);
+            continue;
+        }
+
         let (depth, text) = match parse_line(line) {
             Some(pair) => pair,
             None => continue,
@@ -128,12 +157,18 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
             eyre::bail!("unexpected depth jump at line: {text:?}");
         }
 
-        let (name, _is_dup, node_type, attrs) = parse_node_text(text);
+        let (name, _is_dup, node_type, dep_kind, attrs) = parse_node_text(text);
         let id = name.to_string();
         let label = match split_name_version(name) {
             Some((crate_name, _)) => crate_name.to_string(),
             None => name.to_string(),
         };
+
+        // A new root node resets section_kind (workspace output has multiple roots
+        // separated by blank lines, and each root starts its own section context).
+        if depth == 0 {
+            section_kind = None;
+        }
 
         stack.truncate(depth);
 
@@ -151,9 +186,18 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
 
         // Add edge from parent
         if let Some(parent) = stack.last() {
+            // Determine edge kind:
+            // 1. Explicit annotation on the node: (build) or (dev)
+            // 2. Section header applies to depth-1 edges (root -> child)
+            let edge_kind = dep_kind.or(if depth == 1 { section_kind } else { None });
+            let mut edge_attrs = IndexMap::new();
+            if let Some(kind) = edge_kind {
+                edge_attrs.insert("kind".to_string(), kind.to_string());
+            }
             graph.edges.push(Edge {
                 from: parent.clone(),
                 to: id.clone(),
+                attrs: edge_attrs,
                 ..Default::default()
             });
         }
@@ -334,12 +378,15 @@ myapp v1.0.0
 ";
         let graph = parse(input).unwrap();
         assert_eq!(graph.nodes.len(), 3);
-        // Both libfoo and testlib are children of myapp
         assert_eq!(graph.edges.len(), 2);
         assert_eq!(graph.edges[0].from, "myapp v1.0.0");
         assert_eq!(graph.edges[0].to, "libfoo v0.2.1");
+        // Normal dep has no kind attr
+        assert!(!graph.edges[0].attrs.contains_key("kind"));
+        // Dev dep edge from root has kind=dev
         assert_eq!(graph.edges[1].from, "myapp v1.0.0");
         assert_eq!(graph.edges[1].to, "testlib v1.0.0");
+        assert_eq!(graph.edges[1].attrs.get("kind").unwrap(), "dev");
     }
 
     #[test]
@@ -355,6 +402,81 @@ myapp v1.0.0
         assert_eq!(graph.edges.len(), 2);
         assert_eq!(graph.edges[1].from, "myapp v1.0.0");
         assert_eq!(graph.edges[1].to, "buildlib v1.0.0");
+        assert_eq!(graph.edges[1].attrs.get("kind").unwrap(), "build");
+    }
+
+    #[test]
+    fn section_kind_only_depth_1() {
+        // Children of dev-deps should NOT inherit the dev kind
+        let input = "\
+myapp v1.0.0
+[dev-dependencies]
+└── testlib v1.0.0
+    └── helper v0.1.0
+";
+        let graph = parse(input).unwrap();
+        // root -> testlib is dev
+        assert_eq!(graph.edges[0].attrs.get("kind").unwrap(), "dev");
+        // testlib -> helper has no kind (it's a normal dep of testlib)
+        assert!(!graph.edges[1].attrs.contains_key("kind"));
+    }
+
+    #[test]
+    fn section_kind_resets_at_new_root() {
+        // Workspace output: second root should not inherit first root's section_kind
+        let input = "\
+crateA v1.0.0
+├── libfoo v0.2.1
+[dev-dependencies]
+└── testlib v1.0.0
+
+crateB v2.0.0
+├── libbar v0.1.0
+└── libbaz v0.3.0
+";
+        let graph = parse(input).unwrap();
+        // crateA -> libfoo: normal (no kind)
+        assert!(!graph.edges[0].attrs.contains_key("kind"));
+        // crateA -> testlib: dev
+        assert_eq!(graph.edges[1].attrs.get("kind").unwrap(), "dev");
+        // crateB -> libbar: normal (no kind), NOT dev
+        let bar_edge = graph
+            .edges
+            .iter()
+            .find(|e| e.from == "crateB v2.0.0" && e.to == "libbar v0.1.0")
+            .expect("edge should exist");
+        assert!(!bar_edge.attrs.contains_key("kind"));
+        // crateB -> libbaz: normal (no kind)
+        let baz_edge = graph
+            .edges
+            .iter()
+            .find(|e| e.from == "crateB v2.0.0" && e.to == "libbaz v0.3.0")
+            .expect("edge should exist");
+        assert!(!baz_edge.attrs.contains_key("kind"));
+    }
+
+    #[test]
+    fn build_annotation_edge_kind() {
+        let input = "\
+myapp v1.0.0
+├── libfoo v0.2.1
+└── cc v1.0.0 (build)
+";
+        let graph = parse(input).unwrap();
+        // libfoo edge has no kind
+        assert!(!graph.edges[0].attrs.contains_key("kind"));
+        // cc edge has kind=build from (build) annotation
+        assert_eq!(graph.edges[1].attrs.get("kind").unwrap(), "build");
+    }
+
+    #[test]
+    fn dev_annotation_edge_kind() {
+        let input = "\
+myapp v1.0.0
+└── testutil v0.1.0 (dev)
+";
+        let graph = parse(input).unwrap();
+        assert_eq!(graph.edges[0].attrs.get("kind").unwrap(), "dev");
     }
 
     #[test]
@@ -438,49 +560,54 @@ myapp v1.0.0
 
     #[test]
     fn parse_node_text_simple() {
-        let (id, is_dup, node_type, attrs) = parse_node_text("clap v4.5.57");
+        let (id, is_dup, node_type, dep_kind, attrs) = parse_node_text("clap v4.5.57");
         assert_eq!(id, "clap v4.5.57");
         assert!(!is_dup);
         assert_eq!(node_type, None);
+        assert_eq!(dep_kind, None);
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v4.5.57"));
     }
 
     #[test]
     fn parse_node_text_dup() {
-        let (id, is_dup, node_type, attrs) = parse_node_text("clap v4.5.57 (*)");
+        let (id, is_dup, node_type, dep_kind, attrs) = parse_node_text("clap v4.5.57 (*)");
         assert_eq!(id, "clap v4.5.57");
         assert!(is_dup);
         assert_eq!(node_type, None);
+        assert_eq!(dep_kind, None);
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v4.5.57"));
     }
 
     #[test]
     fn parse_node_text_proc_macro() {
-        let (id, is_dup, node_type, attrs) = parse_node_text("clap_derive v4.5.55 (proc-macro)");
+        let (id, is_dup, node_type, dep_kind, attrs) =
+            parse_node_text("clap_derive v4.5.55 (proc-macro)");
         assert_eq!(id, "clap_derive v4.5.55");
         assert!(!is_dup);
         assert_eq!(node_type.as_deref(), Some("proc-macro"));
-        assert!(!attrs.contains_key("kind"));
+        assert_eq!(dep_kind, None);
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v4.5.55"));
     }
 
     #[test]
     fn parse_node_text_proc_macro_dup() {
-        let (id, is_dup, node_type, attrs) =
+        let (id, is_dup, node_type, dep_kind, attrs) =
             parse_node_text("clap_derive v4.5.55 (proc-macro) (*)");
         assert_eq!(id, "clap_derive v4.5.55");
         assert!(is_dup);
         assert_eq!(node_type.as_deref(), Some("proc-macro"));
-        assert!(!attrs.contains_key("kind"));
+        assert_eq!(dep_kind, None);
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v4.5.55"));
     }
 
     #[test]
     fn parse_node_text_path() {
-        let (id, is_dup, node_type, attrs) = parse_node_text("myapp v1.0.0 (my/workspace/path)");
+        let (id, is_dup, node_type, dep_kind, attrs) =
+            parse_node_text("myapp v1.0.0 (my/workspace/path)");
         assert_eq!(id, "myapp v1.0.0");
         assert!(!is_dup);
         assert_eq!(node_type, None);
+        assert_eq!(dep_kind, None);
         assert_eq!(
             attrs.get("path").map(|s| s.as_str()),
             Some("my/workspace/path")
@@ -490,40 +617,41 @@ myapp v1.0.0
 
     #[test]
     fn parse_node_text_path_and_proc_macro() {
-        let (id, is_dup, node_type, attrs) =
+        let (id, is_dup, node_type, dep_kind, attrs) =
             parse_node_text("mymacro v0.1.0 (my/path) (proc-macro)");
         assert_eq!(id, "mymacro v0.1.0");
         assert!(!is_dup);
         assert_eq!(node_type.as_deref(), Some("proc-macro"));
-        assert!(!attrs.contains_key("kind"));
+        assert_eq!(dep_kind, None);
         assert_eq!(attrs.get("path").map(|s| s.as_str()), Some("my/path"));
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v0.1.0"));
     }
 
     #[test]
     fn parse_node_text_build_kind() {
-        let (id, _, node_type, attrs) = parse_node_text("cc v1.0.0 (build)");
+        let (id, _, node_type, dep_kind, attrs) = parse_node_text("cc v1.0.0 (build)");
         assert_eq!(id, "cc v1.0.0");
         assert_eq!(node_type, None);
-        assert!(!attrs.contains_key("kind"));
+        assert_eq!(dep_kind, Some("build"));
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v1.0.0"));
     }
 
     #[test]
     fn parse_node_text_dev_kind() {
-        let (id, _, node_type, attrs) = parse_node_text("testlib v1.0.0 (dev)");
+        let (id, _, node_type, dep_kind, attrs) = parse_node_text("testlib v1.0.0 (dev)");
         assert_eq!(id, "testlib v1.0.0");
         assert_eq!(node_type, None);
-        assert!(!attrs.contains_key("kind"));
+        assert_eq!(dep_kind, Some("dev"));
         assert_eq!(attrs.get("version").map(|s| s.as_str()), Some("v1.0.0"));
     }
 
     #[test]
     fn parse_node_text_feature_entry() {
-        let (id, is_dup, node_type, attrs) = parse_node_text("clap feature \"default\"");
+        let (id, is_dup, node_type, dep_kind, attrs) = parse_node_text("clap feature \"default\"");
         assert_eq!(id, "clap feature \"default\"");
         assert!(!is_dup);
         assert_eq!(node_type, None);
+        assert_eq!(dep_kind, None);
         assert!(attrs.get("version").is_none());
     }
 
@@ -580,13 +708,21 @@ myapp v1.0.0
                 .any(|e| e.from == "csvizmo-depgraph v0.5.0" && e.to == "clap v4.5.57")
         );
 
-        // Dev dependencies should be children of the root
-        assert!(
-            graph
-                .edges
-                .iter()
-                .any(|e| e.from == "csvizmo-depgraph v0.5.0" && e.to == "csvizmo-test v0.5.0")
-        );
+        // Dev dependencies should be children of the root with kind=dev
+        let dev_edge = graph
+            .edges
+            .iter()
+            .find(|e| e.from == "csvizmo-depgraph v0.5.0" && e.to == "csvizmo-test v0.5.0")
+            .expect("dev-dep edge should exist");
+        assert_eq!(dev_edge.attrs.get("kind").unwrap(), "dev");
+
+        // Normal dependency edges should not have a kind attr
+        let normal_edge = graph
+            .edges
+            .iter()
+            .find(|e| e.from == "csvizmo-depgraph v0.5.0" && e.to == "clap v4.5.57")
+            .expect("normal dep edge should exist");
+        assert!(!normal_edge.attrs.contains_key("kind"));
     }
 
     #[test]
