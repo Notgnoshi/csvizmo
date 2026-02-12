@@ -1,5 +1,6 @@
 mod depfile;
 pub(crate) mod dot;
+mod mermaid;
 mod pathlist;
 mod tgf;
 mod tree;
@@ -17,6 +18,7 @@ use crate::{DepGraph, OutputFormat};
 /// | Format   | Graph attrs | Node label | Node attrs | Edge label | Edge attrs |
 /// |----------|-------------|------------|------------|------------|------------|
 /// | DOT      | yes         | yes        | yes        | yes        | yes        |
+/// | Mermaid  | direction   | yes        | shapes     | yes        | dropped    |
 /// | TGF      | dropped     | yes        | dropped    | yes        | dropped    |
 /// | Tree     | dropped     | yes        | dropped    | dropped    | dropped    |
 /// | Pathlist | dropped     | yes        | dropped    | dropped    | dropped    |
@@ -29,11 +31,11 @@ use crate::{DepGraph, OutputFormat};
 pub fn emit(format: OutputFormat, graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     match format {
         OutputFormat::Dot => dot::emit(graph, writer),
+        OutputFormat::Mermaid => mermaid::emit(graph, writer),
         OutputFormat::Tgf => tgf::emit(graph, writer),
         OutputFormat::Depfile => depfile::emit(graph, writer),
         OutputFormat::Pathlist => pathlist::emit(graph, writer),
         OutputFormat::Tree => tree::emit(graph, writer),
-        _ => eyre::bail!("{format:?} emitting not yet implemented"),
     }
 }
 

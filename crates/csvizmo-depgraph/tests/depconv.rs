@@ -613,3 +613,135 @@ fn dot_roundtrip_with_type() {
     assert!(stdout2.contains(r#"type="lib""#));
     assert!(stdout2.contains(r#"type="proc-macro""#));
 }
+
+#[test]
+fn tgf_to_mermaid() {
+    let input = "a\talpha\nb\tbravo\nc\n#\na\tb\tdepends\nb\tc\na\tc\n";
+    let output = tool!("depconv")
+        .args(["--from", "tgf", "--to", "mermaid"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+flowchart LR
+    a[alpha]
+    b[bravo]
+    c[c]
+    a -->|depends| b
+    b --> c
+    a --> c
+"
+    );
+}
+
+#[test]
+fn mermaid_node_types() {
+    let input = r#"digraph {
+    lib1 [label="Library", type="lib"];
+    bin1 [label="Binary", type="bin"];
+    pm1 [label="Proc Macro", type="proc-macro"];
+    bs1 [label="Build Script", type="build-script"];
+    test1 [label="Test", type="test"];
+    lib1 -> bin1;
+}
+"#;
+    let output = tool!("depconv")
+        .args(["--from", "dot", "--to", "mermaid"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Verify node type shapes
+    assert!(stdout.contains("lib1([Library])"));
+    assert!(stdout.contains("bin1[Binary]"));
+    assert!(stdout.contains("pm1{{Proc Macro}}"));
+    assert!(stdout.contains("bs1[/Build Script/]"));
+    assert!(stdout.contains("test1{Test}"));
+}
+
+#[cfg(feature = "dot")]
+#[test]
+fn dot_to_mermaid_with_subgraphs() {
+    let input = r#"digraph deps {
+    rankdir=TB;
+    subgraph cluster_backend {
+        label="Backend";
+        api [label="API Server"];
+        db [label="Database"];
+    }
+    subgraph cluster_frontend {
+        label="Frontend";
+        web [label="Web App"];
+        mobile [label="Mobile App"];
+    }
+    web -> api;
+    mobile -> api;
+    api -> db [label="queries"];
+}
+"#;
+    let output = tool!("depconv")
+        .args(["--from", "dot", "--to", "mermaid"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Verify flowchart direction from rankdir
+    assert!(stdout.starts_with("flowchart TB\n"));
+    // Verify subgraphs are preserved
+    assert!(stdout.contains("subgraph cluster_backend"));
+    assert!(stdout.contains("subgraph cluster_frontend"));
+    // Verify nodes are in subgraphs
+    assert!(stdout.contains("api[API Server]"));
+    assert!(stdout.contains("db[Database]"));
+    assert!(stdout.contains("web[Web App]"));
+    assert!(stdout.contains("mobile[Mobile App]"));
+    // Verify edge labels
+    assert!(stdout.contains("api -->|queries| db"));
+}
+
+#[test]
+fn mermaid_special_chars() {
+    let input = r#"a	Label [with] "quotes"
+b	Other{label}
+#
+a	b	uses|pipes
+"#;
+    let output = tool!("depconv")
+        .args(["--from", "tgf", "--to", "mermaid"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Verify special chars are escaped
+    assert!(stdout.contains("#91;")); // [
+    assert!(stdout.contains("#93;")); // ]
+    assert!(stdout.contains("#quot;")); // "
+    assert!(stdout.contains("#123;")); // {
+    assert!(stdout.contains("#125;")); // }
+    assert!(stdout.contains("#124;")); // |
+}
+
+#[test]
+fn depfile_to_mermaid() {
+    let input = "main.o: main.c config.h\n";
+    let output = tool!("depconv")
+        .args(["--from", "depfile", "--to", "mermaid"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.starts_with("flowchart LR\n"));
+    assert!(stdout.contains("\"main.o\"[main.o]"));
+    assert!(stdout.contains("\"main.c\"[main.c]"));
+    assert!(stdout.contains("\"config.h\"[config.h]"));
+    assert!(stdout.contains("\"main.o\" --> \"main.c\""));
+    assert!(stdout.contains("\"main.o\" --> \"config.h\""));
+}
