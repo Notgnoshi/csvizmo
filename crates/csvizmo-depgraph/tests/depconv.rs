@@ -745,3 +745,120 @@ fn depfile_to_mermaid() {
     assert!(stdout.contains("\"main.o\" --> \"main.c\""));
     assert!(stdout.contains("\"main.o\" --> \"config.h\""));
 }
+
+#[test]
+fn mermaid_to_tgf() {
+    let input = "flowchart LR\n    A[myapp] --> B[libfoo]\n    A --> C[libbar]\n    B --> C\n";
+    let output = tool!("depconv")
+        .args(["--from", "mermaid", "--to", "tgf"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "A\tmyapp\nB\tlibfoo\nC\tlibbar\n#\nA\tB\nA\tC\nB\tC\n"
+    );
+}
+
+#[test]
+fn mermaid_to_dot() {
+    let input = "flowchart LR\n    A[myapp] --> B[libfoo]\n    A --> C[libbar]\n    B --> C\n";
+    let output = tool!("depconv")
+        .args(["--from", "mermaid", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    direction=\"LR\";
+    A [label=\"myapp\"];
+    B [label=\"libfoo\"];
+    C [label=\"libbar\"];
+    A -> B;
+    A -> C;
+    B -> C;
+}
+"
+    );
+}
+
+#[test]
+fn mermaid_auto_detect() {
+    let input = "flowchart LR\n    A[myapp] --> B[libfoo]\n";
+    let output = tool!("depconv")
+        .args(["--to", "tgf"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "A\tmyapp\nB\tlibfoo\n#\nA\tB\n");
+}
+
+#[test]
+fn mermaid_roundtrip() {
+    let input = "flowchart LR\n    A[myapp] --> B[libfoo]\n    A --> C[libbar]\n    B --> C\n";
+    // parse mermaid -> emit mermaid
+    let output1 = tool!("depconv")
+        .args(["--from", "mermaid", "--to", "mermaid"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output1.status.success());
+    let mmd1 = String::from_utf8_lossy(&output1.stdout);
+
+    // parse again -> emit again, should be stable
+    let output2 = tool!("depconv")
+        .args(["--from", "mermaid", "--to", "mermaid"])
+        .write_stdin(mmd1.as_ref())
+        .captured_output()
+        .unwrap();
+    assert!(output2.status.success());
+    let mmd2 = String::from_utf8_lossy(&output2.stdout);
+
+    assert_eq!(mmd1, mmd2);
+}
+
+#[test]
+fn mermaid_subgraph_to_dot() {
+    let input = include_str!("../../../data/depconv/subgraph.mmd");
+    let output = tool!("depconv")
+        .args(["--from", "mermaid", "--to", "dot"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Verify subgraph structure preserved
+    assert!(stdout.contains("subgraph backend {"));
+    assert!(stdout.contains("subgraph frontend {"));
+    // Verify nodes are inside subgraphs
+    assert!(stdout.contains("api [label=\"API Server\"]"));
+    assert!(stdout.contains("db [label=\"Database\"]"));
+    assert!(stdout.contains("web [label=\"Web App\"]"));
+    // Verify edges
+    assert!(stdout.contains("web -> api"));
+    assert!(stdout.contains("api -> db"));
+}
+
+#[test]
+fn mermaid_edge_labels_to_tgf() {
+    let input = include_str!("../../../data/depconv/flowchart.mmd");
+    let output = tool!("depconv")
+        .args(["--from", "mermaid", "--to", "tgf"])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "A\tmyapp\nB\tlibfoo\nC\tlibbar\n#\nA\tB\tstatic\nA\tC\tdynamic\nB\tC\n"
+    );
+}

@@ -3,6 +3,7 @@ mod cargo_tree;
 mod depfile;
 #[cfg(feature = "dot")]
 pub(crate) mod dot;
+mod mermaid;
 mod pathlist;
 mod tgf;
 mod tree;
@@ -21,6 +22,6 @@ pub fn parse(format: InputFormat, input: &str) -> eyre::Result<DepGraph> {
         InputFormat::Tree => tree::parse(input),
         InputFormat::CargoTree => cargo_tree::parse(input),
         InputFormat::CargoMetadata => cargo_metadata::parse(input),
-        _ => eyre::bail!("{format:?} parsing not yet implemented"),
+        InputFormat::Mermaid => mermaid::parse(input),
     }
 }
