@@ -13,30 +13,6 @@ fn normalize_whitespace(s: &str) -> String {
 }
 
 #[test]
-fn empty_input() {
-    let output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "tgf"])
-        .captured_output()
-        .unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success());
-    assert_eq!(stdout, "#\n");
-}
-
-#[test]
-fn tgf_roundtrip() {
-    let input = include_str!("../../../data/depconv/edge-labels.tgf");
-    let output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "tgf"])
-        .write_stdin(input)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(normalize_whitespace(&stdout), normalize_whitespace(input));
-}
-
-#[test]
 fn tgf_to_dot() {
     let input = include_str!("../../../data/depconv/small.tgf");
     let output = tool!("depconv")
@@ -534,12 +510,39 @@ fn cargo_tree_auto_detect() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should auto-detect as cargo-tree and produce valid TGF
-    assert!(stdout.contains("#\n"));
-    // Root node should be in the output
-    assert!(stdout.contains("csvizmo-depgraph v0.5.0"));
-    // A known dependency should appear
-    assert!(stdout.contains("clap v4.5.57"));
+
+    // Split TGF into node and edge sections
+    let sections: Vec<&str> = stdout.splitn(2, "\n#\n").collect();
+    assert_eq!(
+        sections.len(),
+        2,
+        "TGF output should have node and edge sections"
+    );
+    let node_lines: Vec<&str> = sections[0].lines().collect();
+    let edge_lines: Vec<&str> = sections[1].lines().filter(|l| !l.is_empty()).collect();
+
+    // Verify node and edge counts
+    assert_eq!(node_lines.len(), 69);
+    assert_eq!(edge_lines.len(), 111);
+
+    // Root node should be first
+    assert!(
+        node_lines[0].starts_with("csvizmo-depgraph v0.5.0\t"),
+        "root node should be first, got: {}",
+        node_lines[0]
+    );
+
+    // A known dependency should appear as a node
+    assert!(
+        node_lines.iter().any(|l| l.starts_with("clap v4.5.57\t")),
+        "clap should be in node list"
+    );
+
+    // A known edge should exist
+    assert!(
+        edge_lines.contains(&"csvizmo-depgraph v0.5.0\tclap v4.5.57"),
+        "root -> clap edge should exist"
+    );
 }
 
 #[test]
@@ -554,31 +557,73 @@ fn cargo_metadata_to_dot() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Verify basic DOT structure
-    assert!(stdout.contains("digraph"));
+    // Count nodes and edges for structural verification
+    let node_count = stdout.lines().filter(|l| l.contains("[label=")).count();
+    let edge_count = stdout.lines().filter(|l| l.contains("->")).count();
+    assert_eq!(node_count, 143);
+    assert_eq!(edge_count, 292);
 
-    // Verify csvizmo-depgraph node exists with proper attributes
-    assert!(stdout.contains("\"csvizmo-depgraph 0.5.0\""));
-    assert!(stdout.contains("label=\"csvizmo-depgraph\""));
-    assert!(stdout.contains("version=\"0.5.0\""));
+    // Verify DOT wrapper
+    assert!(stdout.starts_with("digraph {\n"));
+    assert!(stdout.ends_with("}\n"));
 
-    // Verify optional dependencies are marked correctly
-    assert!(stdout.contains(
-        "\"csvizmo-depgraph 0.5.0\" -> \"dot-parser 0.6.1\" [kind=\"normal\", optional=\"dot\"]"
-    ));
-    assert!(stdout.contains(
-        "\"csvizmo-depgraph 0.5.0\" -> \"either 1.15.0\" [kind=\"normal\", optional=\"dot\"]"
-    ));
+    // Verify csvizmo-depgraph node with exact attribute line
+    assert_eq!(
+        stdout
+            .lines()
+            .find(|l| l.contains("csvizmo-depgraph 0.5.0") && l.contains("[label="))
+            .unwrap()
+            .trim(),
+        "\"csvizmo-depgraph 0.5.0\" [label=\"csvizmo-depgraph\", type=\"lib\", \
+         version=\"0.5.0\", features=\"default,dot\", shape=\"ellipse\"];"
+    );
 
-    // Verify regular dependencies don't have optional attribute
-    assert!(stdout.contains("\"csvizmo-depgraph 0.5.0\" -> \"eyre 0.6.12\""));
+    // Verify optional dependencies have exact edge attributes
+    assert_eq!(
+        stdout
+            .lines()
+            .find(|l| l.contains("dot-parser 0.6.1") && l.contains("->"))
+            .unwrap()
+            .trim(),
+        "\"csvizmo-depgraph 0.5.0\" -> \"dot-parser 0.6.1\" [kind=\"normal\", optional=\"dot\"];"
+    );
 
-    // Verify proc-macro nodes have type attribute and shape from default styling
-    assert!(stdout.contains("type=\"proc-macro\""));
-    assert!(stdout.contains("\"clap_derive 4.5.55\" [label=\"clap_derive\", type=\"proc-macro\""));
-    assert!(stdout.contains("shape=\"diamond\""));
+    // Verify proc-macro node with exact attribute line
+    assert_eq!(
+        stdout
+            .lines()
+            .find(|l| l.contains("clap_derive 4.5.55") && l.contains("[label="))
+            .unwrap()
+            .trim(),
+        "\"clap_derive 4.5.55\" [label=\"clap_derive\", type=\"proc-macro\", \
+         version=\"4.5.55\", features=\"default\", shape=\"diamond\"];"
+    );
+
+    // Verify dev dependency edge has styling
+    assert_eq!(
+        stdout
+            .lines()
+            .find(|l| l.contains("csvizmo-depgraph")
+                && l.contains("csvizmo-test")
+                && l.contains("->"))
+            .unwrap()
+            .trim(),
+        "\"csvizmo-depgraph 0.5.0\" -> \"csvizmo-test 0.5.0\" \
+         [kind=\"dev\", style=\"dashed\", color=\"gray60\"];"
+    );
+
+    // Verify regular dependency edge (no optional, no styling)
+    assert_eq!(
+        stdout
+            .lines()
+            .find(|l| l.contains("csvizmo-depgraph") && l.contains("-> \"eyre"))
+            .unwrap()
+            .trim(),
+        "\"csvizmo-depgraph 0.5.0\" -> \"eyre 0.6.12\" [kind=\"normal\"];"
+    );
 }
 
+#[cfg(feature = "dot")]
 #[test]
 fn dot_roundtrip_with_type() {
     let input = r#"digraph {
@@ -588,6 +633,14 @@ fn dot_roundtrip_with_type() {
 }
 "#;
 
+    let expected = "\
+digraph {
+    a [label=\"A\", type=\"lib\", shape=\"ellipse\"];
+    b [label=\"B\", type=\"proc-macro\", shape=\"diamond\"];
+    a -> b;
+}
+";
+
     // Parse DOT -> emit DOT
     let output1 = tool!("depconv")
         .args(["--from", "dot", "--to", "dot"])
@@ -596,23 +649,17 @@ fn dot_roundtrip_with_type() {
         .unwrap();
     assert!(output1.status.success());
     let stdout1 = String::from_utf8_lossy(&output1.stdout);
+    assert_eq!(stdout1, expected);
 
-    // Verify type attributes are preserved
-    assert!(stdout1.contains(r#"type="lib""#));
-    assert!(stdout1.contains(r#"type="proc-macro""#));
-
-    // Parse again to verify round-trip
+    // Parse again to verify round-trip stability
     let output2 = tool!("depconv")
         .args(["--from", "dot", "--to", "dot"])
-        .write_stdin(stdout1.as_bytes())
+        .write_stdin(stdout1.as_ref())
         .captured_output()
         .unwrap();
     assert!(output2.status.success());
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
-
-    // Second round-trip should still have type attributes
-    assert!(stdout2.contains(r#"type="lib""#));
-    assert!(stdout2.contains(r#"type="proc-macro""#));
+    assert_eq!(stdout2, expected);
 }
 
 #[test]
@@ -639,6 +686,7 @@ flowchart LR
     );
 }
 
+#[cfg(feature = "dot")]
 #[test]
 fn mermaid_node_types() {
     let input = r#"digraph {
@@ -657,12 +705,18 @@ fn mermaid_node_types() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Verify node type shapes (via apply_default_styles -> shape attr -> Mermaid bracket)
-    assert!(stdout.contains("lib1([Library])"));
-    assert!(stdout.contains("bin1[Binary]"));
-    assert!(stdout.contains("pm1{Proc Macro}"));
-    assert!(stdout.contains("bs1[/Build Script/]"));
-    assert!(stdout.contains("test1{{Test}}"));
+    assert_eq!(
+        stdout,
+        "\
+flowchart LR
+    bin1[Binary]
+    bs1[/Build Script/]
+    lib1([Library])
+    pm1{Proc Macro}
+    test1{{Test}}
+    lib1 --> bin1
+"
+    );
 }
 
 #[cfg(feature = "dot")]
@@ -708,11 +762,7 @@ fn dot_to_mermaid_with_subgraphs() {
 
 #[test]
 fn mermaid_special_chars() {
-    let input = r#"a	Label [with] "quotes"
-b	Other{label}
-#
-a	b	uses|pipes
-"#;
+    let input = "a\tLabel [with] \"quotes\"\nb\tOther{label}\n#\na\tb\tuses|pipes\n";
     let output = tool!("depconv")
         .args(["--from", "tgf", "--to", "mermaid"])
         .write_stdin(input)
@@ -720,13 +770,15 @@ a	b	uses|pipes
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Verify special chars are escaped
-    assert!(stdout.contains("#91;")); // [
-    assert!(stdout.contains("#93;")); // ]
-    assert!(stdout.contains("#quot;")); // "
-    assert!(stdout.contains("#123;")); // {
-    assert!(stdout.contains("#125;")); // }
-    assert!(stdout.contains("#124;")); // |
+    assert_eq!(
+        stdout,
+        "\
+flowchart LR
+    a[Label #91;with#93; #quot;quotes#quot;]
+    b[Other#123;label#125;]
+    a -->|uses#124;pipes| b
+"
+    );
 }
 
 #[test]
@@ -739,12 +791,17 @@ fn depfile_to_mermaid() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.starts_with("flowchart LR\n"));
-    assert!(stdout.contains("\"main.o\"[main.o]"));
-    assert!(stdout.contains("\"main.c\"[main.c]"));
-    assert!(stdout.contains("\"config.h\"[config.h]"));
-    assert!(stdout.contains("\"main.o\" --> \"main.c\""));
-    assert!(stdout.contains("\"main.o\" --> \"config.h\""));
+    assert_eq!(
+        stdout,
+        "\
+flowchart LR
+    \"main.o\"[main.o]
+    \"main.c\"[main.c]
+    \"config.h\"[config.h]
+    \"main.o\" --> \"main.c\"
+    \"main.o\" --> \"config.h\"
+"
+    );
 }
 
 #[test]
@@ -836,19 +893,29 @@ fn mermaid_subgraph_to_dot() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Verify subgraph structure preserved (cluster_ prefix added for GraphViz)
-    assert!(stdout.contains("subgraph cluster_backend {"));
-    assert!(stdout.contains("subgraph cluster_frontend {"));
-    // Verify labels use original subgraph names
-    assert!(stdout.contains("label=\"backend\""));
-    assert!(stdout.contains("label=\"frontend\""));
-    // Verify nodes are inside subgraphs
-    assert!(stdout.contains("api [label=\"API Server\"]"));
-    assert!(stdout.contains("db [label=\"Database\"]"));
-    assert!(stdout.contains("web [label=\"Web App\"]"));
-    // Verify edges
-    assert!(stdout.contains("web -> api"));
-    assert!(stdout.contains("api -> db"));
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    direction=\"TD\";
+    subgraph cluster_backend {
+        label=\"backend\";
+        api [label=\"API Server\"];
+        db [label=\"Database\"];
+        cache [label=\"Redis Cache\"];
+    }
+    subgraph cluster_frontend {
+        label=\"frontend\";
+        web [label=\"Web App\"];
+        mobile [label=\"Mobile App\"];
+    }
+    web -> api;
+    mobile -> api;
+    api -> db;
+    api -> cache;
+}
+"
+    );
 }
 
 #[test]

@@ -1118,4 +1118,89 @@ mod tests {
         );
         assert_eq!(graph.nodes["8"].node_type, None, "clap should have no type");
     }
+
+    #[test]
+    fn fixture_ninja_gv() {
+        let input = include_str!("../../../../data/depconv/ninja.gv");
+        let graph = parse(input).unwrap();
+
+        // ninja.gv is a small ninja build graph from the graphviz gallery
+        assert_eq!(graph.nodes.len(), 125);
+        assert_eq!(graph.edges.len(), 131);
+        assert_eq!(graph.id.as_deref(), Some("ninja"));
+
+        // "all" target node
+        assert_eq!(graph.nodes["0x7fe58d50f070"].label.as_deref(), Some("all"));
+        // "phony" build-rule nodes have shape=ellipse
+        assert_eq!(
+            graph.nodes["0x7fe58d50eeb0"].label.as_deref(),
+            Some("phony")
+        );
+        assert_eq!(
+            graph.nodes["0x7fe58d50eeb0"]
+                .attrs
+                .get("shape")
+                .map(|s| s.as_str()),
+            Some("ellipse")
+        );
+        // Source file node
+        assert_eq!(
+            graph.nodes["0x7fe58d508c50"].label.as_deref(),
+            Some("src/ninja.cc")
+        );
+    }
+
+    #[test]
+    fn fixture_ninja_geos() {
+        let input = include_str!("../../../../data/depconv/ninja.geos.dot");
+        let graph = parse(input).unwrap();
+
+        // ninja.geos.dot is a large ninja build graph from a GEOS CMake build
+        assert_eq!(graph.nodes.len(), 2451);
+        assert_eq!(graph.edges.len(), 3281);
+        assert_eq!(graph.id.as_deref(), Some("ninja"));
+
+        // "all" target node
+        assert_eq!(graph.nodes["0x55b5eb08a840"].label.as_deref(), Some("all"));
+        // Shared library output
+        assert_eq!(
+            graph.nodes["0x55b5eb07a950"].label.as_deref(),
+            Some("lib/libgeos.so")
+        );
+        // Build-rule nodes have shape=ellipse
+        assert_eq!(
+            graph.nodes["0x55b5eb1b6210"].label.as_deref(),
+            Some("phony")
+        );
+        assert_eq!(
+            graph.nodes["0x55b5eb1b6210"]
+                .attrs
+                .get("shape")
+                .map(|s| s.as_str()),
+            Some("ellipse")
+        );
+    }
+
+    #[test]
+    fn fixture_bitbake_task_depends() {
+        let input = include_str!("../../../../data/depconv/bitbake.curl.task-depends.dot");
+        let graph = parse(input).unwrap();
+
+        // bitbake task-depends.dot is a large BitBake task dependency graph
+        assert_eq!(graph.nodes.len(), 2546);
+        assert_eq!(graph.edges.len(), 7597);
+        assert_eq!(graph.id.as_deref(), Some("depends"));
+
+        // Labels contain \n formatting directives (preserved, not decoded)
+        let label = graph.nodes["acl-native.do_fetch"].label.as_deref().unwrap();
+        assert!(
+            label.contains("\\n"),
+            "bitbake labels should preserve \\n formatting directives"
+        );
+        // Verify a known task node
+        assert!(
+            graph.nodes.contains_key("acl-native.do_collect_spdx_deps"),
+            "should contain acl-native.do_collect_spdx_deps task"
+        );
+    }
 }

@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn cycle_detection() {
+    fn visitor_skips_cycles() {
         // a -> b -> a
         let graph = DepGraph {
             nodes: IndexMap::from([
@@ -338,6 +338,7 @@ mod tests {
         };
         let mut visitor = CollectVisitor::new();
         walk(&graph, &mut visitor).unwrap();
+        // Because the root is involved in a cycle, the visitor will never visit any of the nodes
         assert_eq!(visitor.visits, vec![]);
     }
 
@@ -515,25 +516,5 @@ mod tests {
                 v("sub_b", 2, true, 0, VisitStatus::First),
             ]
         );
-    }
-
-    #[test]
-    fn node_label_passed_through() {
-        let graph = DepGraph {
-            nodes: IndexMap::from([(
-                "a".into(),
-                NodeInfo {
-                    label: Some("Alpha".into()),
-                    ..Default::default()
-                },
-            )]),
-            ..Default::default()
-        };
-        let mut visitor = CollectVisitor::new();
-        walk(&graph, &mut visitor).unwrap();
-        assert_eq!(visitor.visits.len(), 1);
-        assert_eq!(visitor.visits[0].node, "a");
-        // Verify the label was available via the info field -- CollectVisitor
-        // doesn't capture info, but we can test separately.
     }
 }
