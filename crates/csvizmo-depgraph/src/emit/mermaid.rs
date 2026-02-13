@@ -4,34 +4,45 @@ use crate::DepGraph;
 
 /// Sanitize a node ID to be a valid Mermaid identifier.
 ///
-/// Mermaid IDs must be alphanumeric + underscore + dash, or wrapped in quotes.
-/// We prefer bare identifiers when possible, otherwise wrap in double quotes
-/// and escape internal quotes.
+/// Mermaid IDs support alphanumeric, underscore, dash, and dot characters,
+/// and must not start with a digit. Spaces are replaced with underscores.
+/// Other characters are replaced with `_XX` hex encoding.
 fn sanitize_id(id: &str) -> String {
     if is_bare_id(id) {
-        id.to_string()
-    } else {
-        format!("\"{}\"", id.replace('"', "#quot;"))
+        return id.to_string();
     }
+    let mut result = String::new();
+    for c in id.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+            result.push(c);
+        } else if c == ' ' {
+            result.push('_');
+        } else {
+            for b in c.to_string().as_bytes() {
+                result.push_str(&format!("_{b:02x}"));
+            }
+        }
+    }
+    if result.starts_with(|c: char| c.is_ascii_digit()) {
+        result.insert(0, '_');
+    }
+    result
 }
 
 fn is_bare_id(s: &str) -> bool {
     !s.is_empty()
         && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
         && !s.starts_with(|c: char| c.is_ascii_digit())
 }
 
-/// Escape a label string for Mermaid. We replace problematic characters.
+/// Escape a label string for use inside a quoted Mermaid label (`"..."`).
+///
+/// Labels are always wrapped in double quotes inside shape brackets, so
+/// Mermaid syntax characters like `[]{}()|` are safe. Only `"` and `&`
+/// need escaping via HTML named entities.
 fn escape_label(s: &str) -> String {
-    s.replace('"', "#quot;")
-        .replace('[', "#91;")
-        .replace(']', "#93;")
-        .replace('{', "#123;")
-        .replace('}', "#125;")
-        .replace('(', "#40;")
-        .replace(')', "#41;")
-        .replace('|', "#124;")
+    s.replace('&', "&amp;").replace('"', "&quot;")
 }
 
 /// Map a DOT shape attribute to a Mermaid shape bracket.
@@ -39,13 +50,13 @@ fn escape_label(s: &str) -> String {
 /// Returns None if the shape doesn't have a good Mermaid equivalent.
 fn dot_shape_to_mermaid(shape: &str, label: &str) -> Option<String> {
     match shape {
-        "box" => Some(format!("[{label}]")),
-        "circle" => Some(format!("(({label}))")),
-        "ellipse" => Some(format!("([{label}])")),
-        "diamond" => Some(format!("{{{label}}}")),
-        "hexagon" => Some(format!("{{{{{label}}}}}")),
-        "note" => Some(format!("[/{label}/]")),
-        "cylinder" => Some(format!("[({label})]")),
+        "box" => Some(format!("[\"{label}\"]")),
+        "circle" => Some(format!("((\"{label}\"))")),
+        "ellipse" => Some(format!("([\"{label}\"])")),
+        "diamond" => Some(format!("{{\"{label}\"}}")),
+        "hexagon" => Some(format!("{{{{\"{label}\"}}}}")),
+        "note" => Some(format!("[/\"{label}\"/]")),
+        "cylinder" => Some(format!("[(\"{label}\")]")),
         _ => None,
     }
 }
@@ -72,7 +83,7 @@ fn node_shape(info: &crate::NodeInfo, label: &str) -> String {
     }
 
     // Default to rectangle
-    format!("[{label}]")
+    format!("[\"{label}\"]")
 }
 
 /// Emit a [`DepGraph`] as a Mermaid flowchart.
@@ -136,7 +147,7 @@ fn emit_edge(edge: &crate::Edge, writer: &mut dyn Write, depth: usize) -> eyre::
 
     if let Some(label) = &edge.label {
         let escaped = escape_label(label);
-        writeln!(writer, "{indent}{from} -->|{escaped}| {to}")?;
+        writeln!(writer, "{indent}{from} -->|\"{escaped}\"| {to}")?;
     } else {
         writeln!(writer, "{indent}{from} --> {to}")?;
     }
@@ -184,10 +195,12 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_quoted_id() {
-        assert_eq!(sanitize_id("my node"), "\"my node\"");
-        assert_eq!(sanitize_id("has\"quotes"), "\"has#quot;quotes\"");
-        assert_eq!(sanitize_id("123abc"), "\"123abc\"");
+    fn sanitize_non_bare_id() {
+        assert_eq!(sanitize_id("my node"), "my_node");
+        assert_eq!(sanitize_id("has\"quotes"), "has_22quotes");
+        assert_eq!(sanitize_id("123abc"), "_123abc");
+        assert_eq!(sanitize_id("main.o"), "main.o");
+        assert_eq!(sanitize_id("myapp v0.1.0"), "myapp_v0.1.0");
     }
 
     #[test]
@@ -196,13 +209,18 @@ mod tests {
     }
 
     #[test]
-    fn escape_label_brackets() {
-        assert_eq!(escape_label("foo[bar]"), "foo#91;bar#93;");
+    fn escape_label_brackets_preserved() {
+        assert_eq!(escape_label("foo[bar]"), "foo[bar]");
     }
 
     #[test]
     fn escape_label_quotes() {
-        assert_eq!(escape_label("say \"hi\""), "say #quot;hi#quot;");
+        assert_eq!(escape_label("say \"hi\""), "say &quot;hi&quot;");
+    }
+
+    #[test]
+    fn escape_label_ampersand() {
+        assert_eq!(escape_label("A & B"), "A &amp; B");
     }
 
     #[test]
@@ -218,10 +236,10 @@ mod tests {
             output,
             "\
 flowchart LR
-    a[alpha]
-    b[bravo]
-    c[c]
-    a -->|depends| b
+    a[\"alpha\"]
+    b[\"bravo\"]
+    c[\"c\"]
+    a -->|\"depends\"| b
     b --> c
     a --> c
 "
@@ -249,8 +267,8 @@ flowchart LR
             output,
             "\
 flowchart LR
-    x[X Node]
-    y[y]
+    x[\"X Node\"]
+    y[\"y\"]
 "
         );
     }
@@ -303,11 +321,11 @@ flowchart LR
             ..Default::default()
         };
         let output = emit_to_string(&graph);
-        assert!(output.contains("lib1([Library])"));
-        assert!(output.contains("bin1[Binary]"));
-        assert!(output.contains("pm1{Proc Macro}"));
-        assert!(output.contains("bs1[/Build Script/]"));
-        assert!(output.contains("test1{{Test}}"));
+        assert!(output.contains("lib1([\"Library\"])"));
+        assert!(output.contains("bin1[\"Binary\"]"));
+        assert!(output.contains("pm1{\"Proc Macro\"}"));
+        assert!(output.contains("bs1[/\"Build Script\"/]"));
+        assert!(output.contains("test1{{\"Test\"}}"));
     }
 
     #[test]
@@ -331,8 +349,8 @@ flowchart LR
             ..Default::default()
         };
         let output = emit_to_string(&graph);
-        assert!(output.contains("a -->|uses| b"));
-        assert!(output.contains("a -->|has space| c"));
+        assert!(output.contains("a -->|\"uses\"| b"));
+        assert!(output.contains("a -->|\"has space\"| c"));
     }
 
     #[test]
@@ -399,11 +417,11 @@ flowchart LR
             "\
 flowchart LR
     subgraph backend
-        api[API Server]
-        db[Database]
+        api[\"API Server\"]
+        db[\"Database\"]
         api --> db
     end
-    top[top]
+    top[\"top\"]
     top --> api
 "
         );
@@ -430,9 +448,9 @@ flowchart LR
             ..Default::default()
         };
         let output = emit_to_string(&graph);
-        assert!(output.contains("\"my node\"[my node]"));
-        assert!(output.contains("\"has#quot;quotes\"[a #quot;label#quot;]"));
-        assert!(output.contains("\"my node\" --> \"has#quot;quotes\""));
+        assert!(output.contains("my_node[\"my node\"]"));
+        assert!(output.contains("has_22quotes[\"a &quot;label&quot;\"]"));
+        assert!(output.contains("my_node --> has_22quotes"));
     }
 
     #[test]
@@ -455,7 +473,7 @@ flowchart LR
         };
         let output = emit_to_string(&graph);
         // Mermaid doesn't support arbitrary attrs in basic syntax, so they're dropped
-        assert!(output.contains("a[Alpha]"));
+        assert!(output.contains("a[\"Alpha\"]"));
         assert!(!output.contains("shape"));
         assert!(!output.contains("color"));
     }
@@ -473,7 +491,7 @@ flowchart LR
             ..Default::default()
         };
         let output = emit_to_string(&graph);
-        assert!(output.contains("a -->|uses| b"));
+        assert!(output.contains("a -->|\"uses\"| b"));
         assert!(!output.contains("dashed"));
     }
 
@@ -525,11 +543,11 @@ flowchart LR
             ..Default::default()
         };
         let output = emit_to_string(&graph);
-        assert!(output.contains("n1((Circle))"));
-        assert!(output.contains("n2{Diamond}"));
-        assert!(output.contains("n3{{Hexagon}}"));
-        assert!(output.contains("n4([Ellipse])"));
-        assert!(output.contains("n5[(Cylinder)]"));
+        assert!(output.contains("n1((\"Circle\"))"));
+        assert!(output.contains("n2{\"Diamond\"}"));
+        assert!(output.contains("n3{{\"Hexagon\"}}"));
+        assert!(output.contains("n4([\"Ellipse\"])"));
+        assert!(output.contains("n5[(\"Cylinder\")]"));
     }
 
     #[test]
@@ -549,7 +567,7 @@ flowchart LR
         };
         let output = emit_to_string(&graph);
         // shape=box maps to rectangle brackets
-        assert!(output.contains("lib1[Library]"));
+        assert!(output.contains("lib1[\"Library\"]"));
     }
 
     #[test]
@@ -569,6 +587,6 @@ flowchart LR
         };
         let output = emit_to_string(&graph);
         // Unknown shape should fall back to rectangle
-        assert!(output.contains("n1[Unknown]"));
+        assert!(output.contains("n1[\"Unknown\"]"));
     }
 }

@@ -676,10 +676,10 @@ fn tgf_to_mermaid() {
         stdout,
         "\
 flowchart LR
-    a[alpha]
-    b[bravo]
-    c[c]
-    a -->|depends| b
+    a[\"alpha\"]
+    b[\"bravo\"]
+    c[\"c\"]
+    a -->|\"depends\"| b
     b --> c
     a --> c
 "
@@ -709,11 +709,11 @@ fn mermaid_node_types() {
         stdout,
         "\
 flowchart LR
-    bin1[Binary]
-    bs1[/Build Script/]
-    lib1([Library])
-    pm1{Proc Macro}
-    test1{{Test}}
+    bin1[\"Binary\"]
+    bs1[/\"Build Script\"/]
+    lib1([\"Library\"])
+    pm1{\"Proc Macro\"}
+    test1{{\"Test\"}}
     lib1 --> bin1
 "
     );
@@ -752,12 +752,12 @@ fn dot_to_mermaid_with_subgraphs() {
     assert!(stdout.contains("subgraph cluster_backend"));
     assert!(stdout.contains("subgraph cluster_frontend"));
     // Verify nodes are in subgraphs
-    assert!(stdout.contains("api[API Server]"));
-    assert!(stdout.contains("db[Database]"));
-    assert!(stdout.contains("web[Web App]"));
-    assert!(stdout.contains("mobile[Mobile App]"));
+    assert!(stdout.contains("api[\"API Server\"]"));
+    assert!(stdout.contains("db[\"Database\"]"));
+    assert!(stdout.contains("web[\"Web App\"]"));
+    assert!(stdout.contains("mobile[\"Mobile App\"]"));
     // Verify edge labels
-    assert!(stdout.contains("api -->|queries| db"));
+    assert!(stdout.contains("api -->|\"queries\"| db"));
 }
 
 #[test]
@@ -774,9 +774,9 @@ fn mermaid_special_chars() {
         stdout,
         "\
 flowchart LR
-    a[Label #91;with#93; #quot;quotes#quot;]
-    b[Other#123;label#125;]
-    a -->|uses#124;pipes| b
+    a[\"Label [with] &quot;quotes&quot;\"]
+    b[\"Other{label}\"]
+    a -->|\"uses|pipes\"| b
 "
     );
 }
@@ -795,11 +795,11 @@ fn depfile_to_mermaid() {
         stdout,
         "\
 flowchart LR
-    \"main.o\"[main.o]
-    \"main.c\"[main.c]
-    \"config.h\"[config.h]
-    \"main.o\" --> \"main.c\"
-    \"main.o\" --> \"config.h\"
+    main.o[\"main.o\"]
+    main.c[\"main.c\"]
+    config.h[\"config.h\"]
+    main.o --> main.c
+    main.o --> config.h
 "
     );
 }
