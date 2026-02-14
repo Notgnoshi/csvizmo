@@ -98,10 +98,9 @@ mod tests {
     fn nodes_only_produces_empty() {
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("x".into(), NodeInfo::default()),
-                ("y".into(), NodeInfo::default()),
+                ("x".into(), NodeInfo::new("x")),
+                ("y".into(), NodeInfo::new("y")),
             ]),
-            edges: vec![],
             ..Default::default()
         };
         assert_eq!(emit_to_string(&graph), "");
@@ -114,9 +113,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "a".into(),
                 NodeInfo {
-                    label: Some("Alpha".into()),
+                    label: "Alpha".into(),
+                    node_type: None,
                     attrs: IndexMap::from([("shape".into(), "box".into())]),
-                    ..Default::default()
                 },
             )]),
             edges: vec![Edge {

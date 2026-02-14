@@ -121,9 +121,9 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
 
 fn convert_node(node: &mermaid_rs_renderer::ir::Node) -> NodeInfo {
     let label = if node.label != node.id {
-        Some(node.label.clone())
+        node.label.clone()
     } else {
-        None
+        node.id.clone()
     };
     let mut attrs = IndexMap::new();
     if let Some(shape) = map_shape(node.shape) {
@@ -156,9 +156,9 @@ mod tests {
         assert_eq!(graph.attrs.get("direction").unwrap(), "LR");
         assert_eq!(graph.nodes.len(), 3);
 
-        assert_eq!(graph.nodes["A"].label.as_deref(), Some("myapp"));
-        assert_eq!(graph.nodes["B"].label.as_deref(), Some("libfoo"));
-        assert_eq!(graph.nodes["C"].label.as_deref(), Some("libbar"));
+        assert_eq!(graph.nodes["A"].label.as_str(), "myapp");
+        assert_eq!(graph.nodes["B"].label.as_str(), "libfoo");
+        assert_eq!(graph.nodes["C"].label.as_str(), "libbar");
 
         assert_eq!(graph.edges.len(), 3);
         assert_eq!(graph.edges[0].from, "A");
@@ -186,7 +186,7 @@ mod tests {
         assert!(backend.nodes.contains_key("api"));
         assert!(backend.nodes.contains_key("db"));
         assert!(backend.nodes.contains_key("cache"));
-        assert_eq!(backend.nodes["api"].label.as_deref(), Some("API Server"));
+        assert_eq!(backend.nodes["api"].label.as_str(), "API Server");
 
         let frontend = &graph.subgraphs[1];
         assert_eq!(frontend.id.as_deref(), Some("frontend"));

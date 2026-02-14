@@ -126,7 +126,7 @@ fn emit_body(graph: &DepGraph, writer: &mut dyn Write, depth: usize) -> eyre::Re
     // in edges, but we emit them to show labels and shapes.
     for (id, info) in &graph.nodes {
         let sanitized = sanitize_id(id);
-        let label = info.label.as_deref().unwrap_or(id);
+        let label = &info.label;
         let escaped = escape_label(label);
         let shape = node_shape(info, &escaped);
         writeln!(writer, "{indent}{sanitized}{shape}")?;
@@ -249,14 +249,8 @@ flowchart LR
     #[test]
     fn nodes_only() {
         let mut nodes = IndexMap::new();
-        nodes.insert(
-            "x".into(),
-            NodeInfo {
-                label: Some("X Node".into()),
-                ..Default::default()
-            },
-        );
-        nodes.insert("y".into(), NodeInfo::default());
+        nodes.insert("x".into(), NodeInfo::new("X Node"));
+        nodes.insert("y".into(), NodeInfo::new("y"));
         let graph = DepGraph {
             nodes,
             edges: vec![],
@@ -279,41 +273,41 @@ flowchart LR
         nodes.insert(
             "lib1".into(),
             NodeInfo {
-                label: Some("Library".into()),
+                label: "Library".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "ellipse".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "bin1".into(),
             NodeInfo {
-                label: Some("Binary".into()),
+                label: "Binary".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "box".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "pm1".into(),
             NodeInfo {
-                label: Some("Proc Macro".into()),
+                label: "Proc Macro".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "diamond".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "bs1".into(),
             NodeInfo {
-                label: Some("Build Script".into()),
+                label: "Build Script".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "note".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "test1".into(),
             NodeInfo {
-                label: Some("Test".into()),
+                label: "Test".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "hexagon".into())]),
-                ..Default::default()
             },
         );
         let graph = DepGraph {
@@ -357,7 +351,7 @@ flowchart LR
     fn direction_from_rankdir() {
         let graph = DepGraph {
             attrs: IndexMap::from([("rankdir".into(), "TB".into())]),
-            nodes: IndexMap::from([("a".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([("a".into(), NodeInfo::new("a"))]),
             ..Default::default()
         };
         let output = emit_to_string(&graph);
@@ -368,7 +362,7 @@ flowchart LR
     fn direction_from_direction_attr() {
         let graph = DepGraph {
             attrs: IndexMap::from([("direction".into(), "RL".into())]),
-            nodes: IndexMap::from([("a".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([("a".into(), NodeInfo::new("a"))]),
             ..Default::default()
         };
         let output = emit_to_string(&graph);
@@ -378,24 +372,12 @@ flowchart LR
     #[test]
     fn subgraph_emitted() {
         let graph = DepGraph {
-            nodes: IndexMap::from([("top".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([("top".into(), NodeInfo::new("top"))]),
             subgraphs: vec![DepGraph {
                 id: Some("backend".into()),
                 nodes: IndexMap::from([
-                    (
-                        "api".into(),
-                        NodeInfo {
-                            label: Some("API Server".into()),
-                            ..Default::default()
-                        },
-                    ),
-                    (
-                        "db".into(),
-                        NodeInfo {
-                            label: Some("Database".into()),
-                            ..Default::default()
-                        },
-                    ),
+                    ("api".into(), NodeInfo::new("API Server")),
+                    ("db".into(), NodeInfo::new("Database")),
                 ]),
                 edges: vec![Edge {
                     from: "api".into(),
@@ -430,14 +412,8 @@ flowchart LR
     #[test]
     fn special_chars_in_ids() {
         let mut nodes = IndexMap::new();
-        nodes.insert("my node".into(), NodeInfo::default());
-        nodes.insert(
-            "has\"quotes".into(),
-            NodeInfo {
-                label: Some("a \"label\"".into()),
-                ..Default::default()
-            },
-        );
+        nodes.insert("my node".into(), NodeInfo::new("my node"));
+        nodes.insert("has\"quotes".into(), NodeInfo::new("a \"label\""));
         let graph = DepGraph {
             nodes,
             edges: vec![Edge {
@@ -459,12 +435,12 @@ flowchart LR
         nodes.insert(
             "a".into(),
             NodeInfo {
-                label: Some("Alpha".into()),
+                label: "Alpha".into(),
+                node_type: None,
                 attrs: IndexMap::from([
                     ("shape".into(), "box".into()),
                     ("color".into(), "red".into()),
                 ]),
-                ..Default::default()
             },
         );
         let graph = DepGraph {
@@ -501,41 +477,41 @@ flowchart LR
         nodes.insert(
             "n1".into(),
             NodeInfo {
-                label: Some("Circle".into()),
+                label: "Circle".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "circle".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "n2".into(),
             NodeInfo {
-                label: Some("Diamond".into()),
+                label: "Diamond".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "diamond".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "n3".into(),
             NodeInfo {
-                label: Some("Hexagon".into()),
+                label: "Hexagon".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "hexagon".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "n4".into(),
             NodeInfo {
-                label: Some("Ellipse".into()),
+                label: "Ellipse".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "ellipse".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "n5".into(),
             NodeInfo {
-                label: Some("Cylinder".into()),
+                label: "Cylinder".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "cylinder".into())]),
-                ..Default::default()
             },
         );
         let graph = DepGraph {
@@ -556,9 +532,9 @@ flowchart LR
         nodes.insert(
             "lib1".into(),
             NodeInfo {
-                label: Some("Library".into()),
+                label: "Library".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "box".into())]),
-                ..Default::default()
             },
         );
         let graph = DepGraph {
@@ -576,9 +552,9 @@ flowchart LR
         nodes.insert(
             "n1".into(),
             NodeInfo {
-                label: Some("Unknown".into()),
+                label: "Unknown".into(),
+                node_type: None,
                 attrs: IndexMap::from([("shape".into(), "trapezium".into())]),
-                ..Default::default()
             },
         );
         let graph = DepGraph {

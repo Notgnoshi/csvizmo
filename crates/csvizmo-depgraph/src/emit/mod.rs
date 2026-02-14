@@ -48,21 +48,9 @@ pub(crate) mod fixtures {
     /// A small graph for testing: a -> b -> c, a -> c
     pub fn sample_graph() -> DepGraph {
         let mut nodes = IndexMap::new();
-        nodes.insert(
-            "a".into(),
-            NodeInfo {
-                label: Some("alpha".into()),
-                ..Default::default()
-            },
-        );
-        nodes.insert(
-            "b".into(),
-            NodeInfo {
-                label: Some("bravo".into()),
-                ..Default::default()
-            },
-        );
-        nodes.insert("c".into(), NodeInfo::default());
+        nodes.insert("a".into(), NodeInfo::new("alpha"));
+        nodes.insert("b".into(), NodeInfo::new("bravo"));
+        nodes.insert("c".into(), NodeInfo::new("c"));
 
         DepGraph {
             nodes,

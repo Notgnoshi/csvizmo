@@ -140,7 +140,7 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
         graph.nodes.insert(
             node_id,
             NodeInfo {
-                label: Some(label),
+                label,
                 node_type,
                 attrs,
             },

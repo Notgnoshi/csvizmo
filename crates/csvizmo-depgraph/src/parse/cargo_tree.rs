@@ -177,7 +177,7 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
             graph.nodes.insert(
                 id.clone(),
                 NodeInfo {
-                    label: Some(label),
+                    label,
                     node_type,
                     attrs,
                 },
@@ -224,7 +224,7 @@ mod tests {
         let graph = parse("myapp v1.0.0\n").unwrap();
         assert_eq!(graph.nodes.len(), 1);
         let node = &graph.nodes["myapp v1.0.0"];
-        assert_eq!(node.label.as_deref(), Some("myapp"));
+        assert_eq!(node.label.as_str(), "myapp");
         assert_eq!(
             node.attrs.get("version").map(|s| s.as_str()),
             Some("v1.0.0")
@@ -325,7 +325,7 @@ myapp v1.0.0
         let node = &graph.nodes["derive-thing v0.5.0"];
         assert_eq!(node.node_type.as_deref(), Some("proc-macro"));
         assert!(!node.attrs.contains_key("kind"));
-        assert_eq!(node.label.as_deref(), Some("derive-thing"));
+        assert_eq!(node.label.as_str(), "derive-thing");
         assert_eq!(
             node.attrs.get("version").map(|s| s.as_str()),
             Some("v0.5.0")
@@ -664,7 +664,7 @@ myapp v1.0.0
 
         // Root node: ID has version, label is just the name
         let root = &graph.nodes["csvizmo-depgraph v0.5.0"];
-        assert_eq!(root.label.as_deref(), Some("csvizmo-depgraph"));
+        assert_eq!(root.label.as_str(), "csvizmo-depgraph");
         assert_eq!(
             root.attrs.get("version").map(|s| s.as_str()),
             Some("v0.5.0")
@@ -675,7 +675,7 @@ myapp v1.0.0
         );
 
         // Check a few specific nodes
-        assert_eq!(graph.nodes["clap v4.5.57"].label.as_deref(), Some("clap"));
+        assert_eq!(graph.nodes["clap v4.5.57"].label.as_str(), "clap");
         assert_eq!(
             graph.nodes["clap_derive v4.5.55"].node_type.as_deref(),
             Some("proc-macro")

@@ -1,4 +1,6 @@
-use crate::{DepGraph, Edge};
+use indexmap::IndexMap;
+
+use crate::{DepGraph, Edge, NodeInfo};
 
 /// Parse a makefile-style `.d` depfile into a `DepGraph`.
 ///
@@ -42,7 +44,14 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
 }
 
 fn ensure_node(graph: &mut DepGraph, id: &str) {
-    graph.nodes.entry(id.to_string()).or_default();
+    graph
+        .nodes
+        .entry(id.to_string())
+        .or_insert_with(|| NodeInfo {
+            label: id.to_string(),
+            node_type: None,
+            attrs: IndexMap::new(),
+        });
 }
 
 /// Join backslash-continued lines into single logical lines.
@@ -161,7 +170,7 @@ mod tests {
     #[test]
     fn no_labels_or_attrs() {
         let graph = parse("a.o: a.c\n").unwrap();
-        assert_eq!(graph.nodes["a.o"].label, None);
+        assert_eq!(graph.nodes["a.o"].label, "a.o");
         assert!(graph.nodes["a.o"].attrs.is_empty());
         assert_eq!(graph.edges[0].label, None);
         assert!(graph.edges[0].attrs.is_empty());

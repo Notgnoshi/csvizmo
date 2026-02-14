@@ -61,8 +61,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "pm".into(),
                 NodeInfo {
+                    label: "pm".into(),
                     node_type: Some("proc-macro".into()),
-                    ..Default::default()
+                    attrs: Default::default(),
                 },
             )]),
             ..Default::default()
@@ -77,8 +78,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "b".into(),
                 NodeInfo {
+                    label: String::new(),
                     node_type: Some("bin".into()),
-                    ..Default::default()
+                    attrs: Default::default(),
                 },
             )]),
             ..Default::default()
@@ -93,8 +95,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "bs".into(),
                 NodeInfo {
+                    label: String::new(),
                     node_type: Some("build-script".into()),
-                    ..Default::default()
+                    attrs: Default::default(),
                 },
             )]),
             ..Default::default()
@@ -109,8 +112,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "opt".into(),
                 NodeInfo {
+                    label: String::new(),
                     node_type: Some("optional".into()),
-                    ..Default::default()
+                    attrs: Default::default(),
                 },
             )]),
             ..Default::default()
@@ -125,8 +129,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "l".into(),
                 NodeInfo {
+                    label: String::new(),
                     node_type: Some("lib".into()),
-                    ..Default::default()
+                    attrs: Default::default(),
                 },
             )]),
             ..Default::default()
@@ -141,8 +146,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "t".into(),
                 NodeInfo {
+                    label: String::new(),
                     node_type: Some("test".into()),
-                    ..Default::default()
+                    attrs: Default::default(),
                 },
             )]),
             ..Default::default()
@@ -157,9 +163,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "pm".into(),
                 NodeInfo {
+                    label: String::new(),
                     node_type: Some("proc-macro".into()),
                     attrs: IndexMap::from([("shape".into(), "box".into())]),
-                    ..Default::default()
                 },
             )]),
             ..Default::default()
@@ -174,9 +180,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "opt".into(),
                 NodeInfo {
+                    label: String::new(),
                     node_type: Some("optional".into()),
                     attrs: IndexMap::from([("style".into(), "bold".into())]),
-                    ..Default::default()
                 },
             )]),
             ..Default::default()
@@ -191,8 +197,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "x".into(),
                 NodeInfo {
+                    label: String::new(),
                     node_type: Some("unknown-thing".into()),
-                    ..Default::default()
+                    attrs: Default::default(),
                 },
             )]),
             ..Default::default()
@@ -204,7 +211,7 @@ mod tests {
     #[test]
     fn no_type_no_attrs() {
         let mut graph = DepGraph {
-            nodes: IndexMap::from([("x".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([("x".into(), NodeInfo::new("x"))]),
             ..Default::default()
         };
         apply_default_styles(&mut graph);
@@ -302,8 +309,9 @@ mod tests {
                 nodes: IndexMap::from([(
                     "inner".into(),
                     NodeInfo {
+                        label: String::new(),
                         node_type: Some("bin".into()),
-                        ..Default::default()
+                        attrs: Default::default(),
                     },
                 )]),
                 edges: vec![Edge {

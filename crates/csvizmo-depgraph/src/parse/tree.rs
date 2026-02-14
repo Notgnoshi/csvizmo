@@ -91,13 +91,9 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
         stack.truncate(depth);
         stack.push(id.clone());
 
-        graph.nodes.insert(
-            id.clone(),
-            NodeInfo {
-                label: Some(name.to_string()),
-                ..Default::default()
-            },
-        );
+        graph
+            .nodes
+            .insert(id.clone(), NodeInfo::new(name.to_string()));
 
         if depth > 0 {
             graph.edges.push(Edge {
@@ -126,7 +122,7 @@ mod tests {
     fn root_only() {
         let graph = parse("mydir\n").unwrap();
         assert_eq!(graph.nodes.len(), 1);
-        assert_eq!(graph.nodes["mydir"].label.as_deref(), Some("mydir"));
+        assert_eq!(graph.nodes["mydir"].label.as_str(), "mydir");
         assert!(graph.edges.is_empty());
     }
 
@@ -139,9 +135,9 @@ root
 ";
         let graph = parse(input).unwrap();
         assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.nodes["root"].label.as_deref(), Some("root"));
-        assert_eq!(graph.nodes["root/alpha"].label.as_deref(), Some("alpha"));
-        assert_eq!(graph.nodes["root/bravo"].label.as_deref(), Some("bravo"));
+        assert_eq!(graph.nodes["root"].label.as_str(), "root");
+        assert_eq!(graph.nodes["root/alpha"].label.as_str(), "alpha");
+        assert_eq!(graph.nodes["root/bravo"].label.as_str(), "bravo");
         assert_eq!(graph.edges.len(), 2);
         assert_eq!(graph.edges[0].from, "root");
         assert_eq!(graph.edges[0].to, "root/alpha");
@@ -174,8 +170,8 @@ root
 ";
         let graph = parse(input).unwrap();
         assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.nodes["root/alpha"].label.as_deref(), Some("alpha"));
-        assert_eq!(graph.nodes["root/bravo"].label.as_deref(), Some("bravo"));
+        assert_eq!(graph.nodes["root/alpha"].label.as_str(), "alpha");
+        assert_eq!(graph.nodes["root/bravo"].label.as_str(), "bravo");
         assert_eq!(graph.edges.len(), 2);
     }
 
@@ -201,7 +197,7 @@ root
 ";
         let graph = parse(input).unwrap();
         assert_eq!(graph.nodes.len(), 2);
-        assert_eq!(graph.nodes["root/only"].label.as_deref(), Some("only"));
+        assert_eq!(graph.nodes["root/only"].label.as_str(), "only");
     }
 
     #[test]
@@ -285,10 +281,8 @@ root
                 .contains_key("crates/csvizmo-utils/src/stdio.rs")
         );
         assert_eq!(
-            graph.nodes["crates/csvizmo-can/Cargo.toml"]
-                .label
-                .as_deref(),
-            Some("Cargo.toml")
+            graph.nodes["crates/csvizmo-can/Cargo.toml"].label.as_str(),
+            "Cargo.toml"
         );
         // "crates" is the root -- no incoming edges
         assert!(!graph.edges.iter().any(|e| e.to == "crates"));
@@ -337,10 +331,7 @@ root
         // "shared" under b should resolve to the same name (without marker)
         assert!(graph.nodes.contains_key("root/a/shared"));
         assert!(graph.nodes.contains_key("root/b/shared"));
-        assert_eq!(
-            graph.nodes["root/b/shared"].label.as_deref(),
-            Some("shared")
-        );
+        assert_eq!(graph.nodes["root/b/shared"].label.as_str(), "shared");
     }
 
     #[test]
@@ -352,7 +343,7 @@ root
 ";
         let graph = parse(input).unwrap();
         assert!(graph.nodes.contains_key("root/a/root"));
-        assert_eq!(graph.nodes["root/a/root"].label.as_deref(), Some("root"));
+        assert_eq!(graph.nodes["root/a/root"].label.as_str(), "root");
     }
 
     #[test]

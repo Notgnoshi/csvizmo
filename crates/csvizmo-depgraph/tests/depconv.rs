@@ -50,7 +50,7 @@ fn dot_to_tgf() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(
         stdout,
-        "libbar\tlibbar\nlibfoo\tlibfoo\nmyapp\tMy Application\n#\nmyapp\tlibfoo\nmyapp\tlibbar\nlibfoo\tlibbar\n"
+        "libbar\nlibfoo\nmyapp\tMy Application\n#\nmyapp\tlibfoo\nmyapp\tlibbar\nlibfoo\tlibbar\n"
     );
 }
 
@@ -234,10 +234,10 @@ fn pathlist_to_dot() {
         stdout,
         "\
 digraph {
-    src [label=\"src\"];
+    src;
     \"src/a.rs\" [label=\"a.rs\"];
     \"src/b.rs\" [label=\"b.rs\"];
-    \"README.md\" [label=\"README.md\"];
+    \"README.md\";
     src -> \"src/a.rs\";
     src -> \"src/b.rs\";
 }
@@ -257,7 +257,7 @@ fn pathlist_auto_detect_content() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(
         stdout,
-        "src\tsrc\nsrc/main.rs\tmain.rs\nsrc/lib.rs\tlib.rs\n#\nsrc\tsrc/main.rs\nsrc\tsrc/lib.rs\n"
+        "src\nsrc/main.rs\tmain.rs\nsrc/lib.rs\tlib.rs\n#\nsrc\tsrc/main.rs\nsrc\tsrc/lib.rs\n"
     );
 }
 
@@ -275,7 +275,7 @@ fn tree_to_dot() {
         stdout,
         "\
 digraph {
-    root [label=\"root\"];
+    root;
     \"root/a\" [label=\"a\"];
     \"root/a/b\" [label=\"b\"];
     \"root/c\" [label=\"c\"];
@@ -297,10 +297,7 @@ fn tree_auto_detect_content() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout,
-        "root\troot\nroot/child\tchild\n#\nroot\troot/child\n"
-    );
+    assert_eq!(stdout, "root\nroot/child\tchild\n#\nroot\troot/child\n");
 }
 
 #[test]
@@ -382,8 +379,8 @@ fn dot_to_dot() {
         "\
 digraph deps {
     rankdir=\"LR\";
-    libbar [label=\"libbar\"];
-    libfoo [label=\"libfoo\"];
+    libbar;
+    libfoo;
     myapp [label=\"My Application\", shape=\"box\"];
     myapp -> libfoo;
     myapp -> libbar;

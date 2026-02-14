@@ -165,9 +165,9 @@ pub fn normalize_node_type(raw: &str) -> String {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct NodeInfo {
-    pub label: Option<String>,
+    pub label: String,
     /// Node type/kind (e.g. "lib", "bin", "proc-macro", "build-script").
     /// Semantics are format-specific on input; normalized to canonical names where possible.
     /// Formats that don't support types leave this as None.
@@ -175,6 +175,18 @@ pub struct NodeInfo {
     /// Arbitrary extra attributes. Parsers populate these from format-specific features;
     /// emitters carry them through where the output format allows.
     pub attrs: IndexMap<String, String>,
+}
+
+impl NodeInfo {
+    /// Create a new NodeInfo with the given label.
+    /// Node type and attributes are initialized to their defaults (None and empty, respectively).
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            node_type: None,
+            attrs: Default::default(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]

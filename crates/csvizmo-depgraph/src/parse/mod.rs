@@ -11,7 +11,7 @@ mod tree;
 use crate::{DepGraph, InputFormat};
 
 pub fn parse(format: InputFormat, input: &str) -> eyre::Result<DepGraph> {
-    match format {
+    let mut graph = match format {
         #[cfg(feature = "dot")]
         InputFormat::Dot => dot::parse(input),
         #[cfg(not(feature = "dot"))]
@@ -23,5 +23,9 @@ pub fn parse(format: InputFormat, input: &str) -> eyre::Result<DepGraph> {
         InputFormat::CargoTree => cargo_tree::parse(input),
         InputFormat::CargoMetadata => cargo_metadata::parse(input),
         InputFormat::Mermaid => mermaid::parse(input),
-    }
+    }?;
+
+    crate::style::apply_default_styles(&mut graph);
+
+    Ok(graph)
 }
