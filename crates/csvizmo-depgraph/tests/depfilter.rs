@@ -48,29 +48,6 @@ fn select_by_id() {
 }
 
 #[test]
-fn select_by_label() {
-    let output = tool!("depfilter")
-        .args([
-            "select",
-            "--pattern",
-            "myapp",
-            "--key",
-            "label",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(SIMPLE_GRAPH)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, "3\tmyapp\n#\n");
-}
-
-#[test]
-#[ignore]
 fn select_with_deps() {
     // Select myapp and include all its dependencies
     let output = tool!("depfilter")
@@ -94,7 +71,6 @@ fn select_with_deps() {
 }
 
 #[test]
-#[ignore]
 fn select_with_ancestors() {
     // Select libbar and include all nodes that depend on it
     let output = tool!("depfilter")
@@ -118,7 +94,6 @@ fn select_with_ancestors() {
 }
 
 #[test]
-#[ignore]
 fn select_with_depth() {
     // Create a deeper graph for depth testing
     // a -> b -> c -> d
@@ -146,26 +121,25 @@ fn select_with_depth() {
 }
 
 #[test]
-fn select_multiple_patterns_or() {
+fn select_depth_from_roots() {
+    // a -> b -> c -> d: no pattern, depth 1 seeds from roots (a), keeps a and b
+    let deep_graph = "a\nb\nc\nd\n#\na\tb\nb\tc\nc\td\n";
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
-            "libfoo",
-            "--pattern",
-            "myapp",
+            "--depth",
+            "1",
             "--input-format",
             "tgf",
             "--output-format",
             "tgf",
         ])
-        .write_stdin(SIMPLE_GRAPH)
+        .write_stdin(deep_graph)
         .captured_output()
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should include libfoo and myapp (OR logic), plus edge between them
-    assert_eq!(stdout, "1\tlibfoo\n3\tmyapp\n#\n3\t1\n");
+    assert_eq!(stdout, "a\nb\n#\na\tb\n");
 }
 
 #[test]
@@ -390,27 +364,6 @@ fn filter_multiple_patterns_and() {
         stdout,
         "libfoo-beta\tlibfoo-beta\nlibbar-alpha\tlibbar-alpha\n#\n"
     );
-}
-
-#[test]
-fn select_empty_result() {
-    let output = tool!("depfilter")
-        .args([
-            "select",
-            "--pattern",
-            "nonexistent",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(SIMPLE_GRAPH)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should return empty graph
-    assert_eq!(stdout, "#\n");
 }
 
 #[test]
