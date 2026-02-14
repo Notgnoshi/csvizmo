@@ -192,7 +192,7 @@ fn add_node(node_stmt: &ast::NodeStmt<(ast::ID, ast::ID)>, dep: &mut DepGraph) -
                         info.label = value;
                     }
                     "type" => {
-                        explicit_type = Some(crate::normalize_node_type(&value));
+                        explicit_type = Some(super::normalize_node_type(&value));
                     }
                     "shape" => {
                         shape_value = Some(value.clone());

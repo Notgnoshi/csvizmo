@@ -81,7 +81,7 @@ fn parse_node_text(
 
         match annotation {
             "proc-macro" => {
-                node_type = Some(crate::normalize_node_type(annotation));
+                node_type = Some(super::normalize_node_type(annotation));
             }
             "build" => dep_kind = Some("build"),
             "dev" => dep_kind = Some("dev"),

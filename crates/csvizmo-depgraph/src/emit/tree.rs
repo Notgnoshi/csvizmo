@@ -474,7 +474,7 @@ root
 │   └── b
 └── c
 ";
-        let graph = crate::parse::parse(crate::InputFormat::Tree, input).unwrap();
+        let graph = crate::parse::parse(crate::parse::InputFormat::Tree, input).unwrap();
         assert_eq!(emit_to_string(&graph), input);
     }
 

@@ -2,7 +2,8 @@ use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use clap::Parser;
-use csvizmo_depgraph::{InputFormat, OutputFormat};
+use csvizmo_depgraph::emit::OutputFormat;
+use csvizmo_depgraph::parse::InputFormat;
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
 
 /// Dependency graph format converter.
@@ -62,7 +63,7 @@ fn main() -> eyre::Result<()> {
     let mut input_text = String::new();
     input.read_to_string(&mut input_text)?;
 
-    let input_format = csvizmo_depgraph::resolve_input_format(
+    let input_format = csvizmo_depgraph::parse::resolve_input_format(
         args.input_format,
         input_path.as_deref(),
         &input_text,
@@ -74,7 +75,7 @@ fn main() -> eyre::Result<()> {
     }
 
     let output_format =
-        csvizmo_depgraph::resolve_output_format(args.output_format, output_path.as_deref())?;
+        csvizmo_depgraph::emit::resolve_output_format(args.output_format, output_path.as_deref())?;
 
     let graph = csvizmo_depgraph::parse::parse(input_format, &input_text)?;
     tracing::info!(

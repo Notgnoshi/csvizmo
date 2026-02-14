@@ -321,14 +321,14 @@ mod tests {
     #[test]
     fn roundtrip_simple() {
         let input = "src/a.rs\nsrc/b.rs\n";
-        let graph = crate::parse::parse(crate::InputFormat::Pathlist, input).unwrap();
+        let graph = crate::parse::parse(crate::parse::InputFormat::Pathlist, input).unwrap();
         assert_eq!(emit_to_string(&graph), input);
     }
 
     #[test]
     fn roundtrip_nested() {
         let input = "a/b/c\na/b/d\na/e\n";
-        let graph = crate::parse::parse(crate::InputFormat::Pathlist, input).unwrap();
+        let graph = crate::parse::parse(crate::parse::InputFormat::Pathlist, input).unwrap();
         assert_eq!(emit_to_string(&graph), input);
     }
 

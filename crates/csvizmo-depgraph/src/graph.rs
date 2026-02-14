@@ -3,7 +3,104 @@ use std::collections::HashSet;
 use indexmap::IndexMap;
 use petgraph::graph::{DiGraph, NodeIndex};
 
-use crate::DepGraph;
+#[derive(Clone, Debug, Default)]
+pub struct DepGraph {
+    /// Graph or subgraph identifier (e.g. DOT `digraph <id>` / `subgraph <id>`).
+    pub id: Option<String>,
+    /// Graph-level attributes (e.g. DOT `rankdir`, `label`, `color`).
+    pub attrs: IndexMap<String, String>,
+    pub nodes: IndexMap<String, NodeInfo>,
+    pub edges: Vec<Edge>,
+    /// Nested subgraphs, each owning its own nodes and edges.
+    pub subgraphs: Vec<DepGraph>,
+}
+
+impl DepGraph {
+    /// Collect all nodes from this graph and all nested subgraphs.
+    ///
+    /// This function recurses over subgraphs to aggregate the results. If you're doing repeated
+    /// lookups, consider caching the results.
+    pub fn all_nodes(&self) -> IndexMap<&str, &NodeInfo> {
+        let mut result = IndexMap::new();
+        // Recurse over the subgraphs in DFS order to collect nodes from each
+        self.collect_nodes(&mut result);
+        result
+    }
+
+    fn collect_nodes<'a>(&'a self, result: &mut IndexMap<&'a str, &'a NodeInfo>) {
+        for (id, info) in &self.nodes {
+            result.insert(id.as_str(), info);
+        }
+        for sg in &self.subgraphs {
+            sg.collect_nodes(result);
+        }
+    }
+
+    /// Collect all edges from this graph and all nested subgraphs.
+    ///
+    /// This function recurses over subgraphs to aggregate the results. If you're doing repeated
+    /// lookups, consider caching the results.
+    pub fn all_edges(&self) -> Vec<&Edge> {
+        let mut result = Vec::new();
+        // Recurse over the subgraphs in DFS order to collect edges from each
+        self.collect_edges(&mut result);
+        result
+    }
+
+    fn collect_edges<'a>(&'a self, result: &mut Vec<&'a Edge>) {
+        result.extend(&self.edges);
+        for sg in &self.subgraphs {
+            sg.collect_edges(result);
+        }
+    }
+
+    /// Build an adjacency list from all edges across all subgraphs.
+    ///
+    /// This function recurses over subgraphs to aggregate the results. If you're doing repeated
+    /// lookups, consider caching the results.
+    pub fn adjacency_list(&self) -> IndexMap<&str, Vec<&str>> {
+        let mut adj = IndexMap::new();
+        for edge in self.all_edges() {
+            adj.entry(edge.from.as_str())
+                .or_insert_with(Vec::new)
+                .push(edge.to.as_str());
+        }
+        adj
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NodeInfo {
+    pub label: String,
+    /// Node type/kind (e.g. "lib", "bin", "proc-macro", "build-script").
+    /// Semantics are format-specific on input; normalized to canonical names where possible.
+    /// Formats that don't support types leave this as None.
+    pub node_type: Option<String>,
+    /// Arbitrary extra attributes. Parsers populate these from format-specific features;
+    /// emitters carry them through where the output format allows.
+    pub attrs: IndexMap<String, String>,
+}
+
+impl NodeInfo {
+    /// Create a new NodeInfo with the given label.
+    /// Node type and attributes are initialized to their defaults (None and empty, respectively).
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            node_type: None,
+            attrs: Default::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Edge {
+    pub from: String,
+    pub to: String,
+    pub label: Option<String>,
+    /// Arbitrary extra attributes (e.g. DOT `style`, `color`).
+    pub attrs: IndexMap<String, String>,
+}
 
 /// A flattened view of a [`DepGraph`] as a petgraph [`DiGraph`].
 ///
@@ -97,7 +194,6 @@ fn filter_depgraph(graph: &DepGraph, keep: &HashSet<&str>) -> DepGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Edge, NodeInfo};
 
     fn make_graph(
         nodes: &[(&str, &str)],

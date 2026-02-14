@@ -70,7 +70,7 @@ fn extract_package_types(pkg: &Package) -> Option<String> {
         .flat_map(|t| &t.kind)
         .map(|k| {
             let kind_str = k.to_string();
-            crate::normalize_node_type(&kind_str)
+            super::normalize_node_type(&kind_str)
         })
         .collect();
 
