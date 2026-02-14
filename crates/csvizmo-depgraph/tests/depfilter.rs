@@ -171,8 +171,7 @@ fn select_multiple_patterns_or() {
 #[test]
 fn select_multiple_patterns_and() {
     // Graph with nodes that match multiple criteria
-    let graph =
-        "libfoo-alpha\nlibfoo-beta\nlibbar-alpha\n#\n";
+    let graph = "libfoo-alpha\nlibfoo-beta\nlibbar-alpha\n#\n";
     let output = tool!("depfilter")
         .args([
             "select",

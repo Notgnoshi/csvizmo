@@ -1,6 +1,7 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use indexmap::IndexMap;
+use petgraph::Direction;
 use petgraph::graph::{DiGraph, NodeIndex};
 
 #[derive(Clone, Debug, Default)]
@@ -150,6 +151,48 @@ impl<'a> FlatGraphView<'a> {
             id_to_idx,
             idx_to_id,
         }
+    }
+
+    /// Return all root nodes (nodes with no incoming edges).
+    pub fn roots(&self) -> impl Iterator<Item = NodeIndex> + '_ {
+        self.pg.node_indices().filter(|&idx| {
+            self.pg
+                .neighbors_directed(idx, Direction::Incoming)
+                .next()
+                .is_none()
+        })
+    }
+
+    /// BFS from `seeds` following edges in `direction`, returning all visited nodes.
+    ///
+    /// If `max_depth` is `Some(n)`, only nodes within `n` hops of a seed are included.
+    /// The seeds themselves are always included (depth 0).
+    pub fn bfs(
+        &self,
+        seeds: impl IntoIterator<Item = NodeIndex>,
+        direction: Direction,
+        max_depth: Option<usize>,
+    ) -> HashSet<NodeIndex> {
+        let mut visited = HashSet::new();
+        let mut queue: VecDeque<(NodeIndex, usize)> = VecDeque::new();
+        for seed in seeds {
+            if visited.insert(seed) {
+                queue.push_back((seed, 0));
+            }
+        }
+
+        while let Some((node, depth)) = queue.pop_front() {
+            if max_depth.is_some_and(|max| depth >= max) {
+                continue;
+            }
+            for neighbor in self.pg.neighbors_directed(node, direction) {
+                if visited.insert(neighbor) {
+                    queue.push_back((neighbor, depth + 1));
+                }
+            }
+        }
+
+        visited
     }
 
     /// Filter the original `DepGraph` to only include nodes in the `keep` set.
@@ -361,5 +404,173 @@ mod tests {
             filtered.subgraphs[0].attrs.get("color").map(String::as_str),
             Some("blue")
         );
+    }
+
+    // -- roots --
+
+    #[test]
+    fn roots_empty_graph() {
+        let g = DepGraph::default();
+        let view = FlatGraphView::new(&g);
+        assert_eq!(view.roots().count(), 0);
+    }
+
+    #[test]
+    fn roots_no_edges() {
+        let g = make_graph(&[("a", "A"), ("b", "B")], &[], vec![]);
+        let view = FlatGraphView::new(&g);
+        let root_ids: Vec<&str> = view
+            .roots()
+            .map(|idx| view.idx_to_id[idx.index()])
+            .collect();
+        assert_eq!(root_ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn roots_chain() {
+        // a -> b -> c: only a is a root
+        let g = make_graph(
+            &[("a", "A"), ("b", "B"), ("c", "C")],
+            &[("a", "b"), ("b", "c")],
+            vec![],
+        );
+        let view = FlatGraphView::new(&g);
+        let root_ids: Vec<&str> = view
+            .roots()
+            .map(|idx| view.idx_to_id[idx.index()])
+            .collect();
+        assert_eq!(root_ids, vec!["a"]);
+    }
+
+    #[test]
+    fn roots_diamond() {
+        // a -> b, a -> c, b -> d, c -> d
+        let g = make_graph(
+            &[("a", "A"), ("b", "B"), ("c", "C"), ("d", "D")],
+            &[("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")],
+            vec![],
+        );
+        let view = FlatGraphView::new(&g);
+        let root_ids: Vec<&str> = view
+            .roots()
+            .map(|idx| view.idx_to_id[idx.index()])
+            .collect();
+        assert_eq!(root_ids, vec!["a"]);
+    }
+
+    #[test]
+    fn roots_cycle() {
+        // a -> b -> c -> a: every node has an incoming edge, no roots
+        let g = make_graph(
+            &[("a", "A"), ("b", "B"), ("c", "C")],
+            &[("a", "b"), ("b", "c"), ("c", "a")],
+            vec![],
+        );
+        let view = FlatGraphView::new(&g);
+        assert_eq!(view.roots().count(), 0);
+    }
+
+    // -- bfs --
+
+    #[test]
+    fn bfs_outgoing_full() {
+        // a -> b -> c
+        let g = make_graph(
+            &[("a", "A"), ("b", "B"), ("c", "C")],
+            &[("a", "b"), ("b", "c")],
+            vec![],
+        );
+        let view = FlatGraphView::new(&g);
+        let result = view.bfs([view.id_to_idx["a"]], Direction::Outgoing, None);
+        let mut ids: Vec<&str> = result
+            .iter()
+            .map(|idx| view.idx_to_id[idx.index()])
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn bfs_incoming_full() {
+        // a -> b -> c: ancestors of c = {a, b, c}
+        let g = make_graph(
+            &[("a", "A"), ("b", "B"), ("c", "C")],
+            &[("a", "b"), ("b", "c")],
+            vec![],
+        );
+        let view = FlatGraphView::new(&g);
+        let result = view.bfs([view.id_to_idx["c"]], Direction::Incoming, None);
+        let mut ids: Vec<&str> = result
+            .iter()
+            .map(|idx| view.idx_to_id[idx.index()])
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn bfs_depth_limited() {
+        // a -> b -> c -> d: depth 1 from a = {a, b}
+        let g = make_graph(
+            &[("a", "A"), ("b", "B"), ("c", "C"), ("d", "D")],
+            &[("a", "b"), ("b", "c"), ("c", "d")],
+            vec![],
+        );
+        let view = FlatGraphView::new(&g);
+        let result = view.bfs([view.id_to_idx["a"]], Direction::Outgoing, Some(1));
+        let mut ids: Vec<&str> = result
+            .iter()
+            .map(|idx| view.idx_to_id[idx.index()])
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn bfs_depth_zero() {
+        // depth 0 from a = just {a}
+        let g = make_graph(&[("a", "A"), ("b", "B")], &[("a", "b")], vec![]);
+        let view = FlatGraphView::new(&g);
+        let result = view.bfs([view.id_to_idx["a"]], Direction::Outgoing, Some(0));
+        let ids: Vec<&str> = result
+            .iter()
+            .map(|idx| view.idx_to_id[idx.index()])
+            .collect();
+        assert_eq!(ids, vec!["a"]);
+    }
+
+    #[test]
+    fn bfs_multiple_seeds() {
+        // a -> b, c -> d: seeds {a, c} outgoing = {a, b, c, d}
+        let g = make_graph(
+            &[("a", "A"), ("b", "B"), ("c", "C"), ("d", "D")],
+            &[("a", "b"), ("c", "d")],
+            vec![],
+        );
+        let view = FlatGraphView::new(&g);
+        let result = view.bfs(
+            [view.id_to_idx["a"], view.id_to_idx["c"]],
+            Direction::Outgoing,
+            None,
+        );
+        let mut ids: Vec<&str> = result
+            .iter()
+            .map(|idx| view.idx_to_id[idx.index()])
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec!["a", "b", "c", "d"]);
+    }
+
+    #[test]
+    fn bfs_cycle() {
+        // a -> b -> c -> a: full traversal doesn't loop forever
+        let g = make_graph(
+            &[("a", "A"), ("b", "B"), ("c", "C")],
+            &[("a", "b"), ("b", "c"), ("c", "a")],
+            vec![],
+        );
+        let view = FlatGraphView::new(&g);
+        let result = view.bfs([view.id_to_idx["a"]], Direction::Outgoing, None);
+        assert_eq!(result.len(), 3);
     }
 }
