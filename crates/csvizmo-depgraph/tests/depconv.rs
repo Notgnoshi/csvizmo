@@ -16,7 +16,7 @@ fn normalize_whitespace(s: &str) -> String {
 fn tgf_to_dot() {
     let input = include_str!("../../../data/depconv/small.tgf");
     let output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "dot"])
+        .args(["--input-format", "tgf", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -42,7 +42,7 @@ digraph {
 fn dot_to_tgf() {
     let input = include_str!("../../../data/depconv/small.dot");
     let output = tool!("depconv")
-        .args(["--from", "dot", "--to", "tgf"])
+        .args(["--input-format", "dot", "--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -60,7 +60,7 @@ fn tgf_to_dot_to_tgf_roundtrip() {
     let input = "a\tAlpha\nb\tBravo\n#\na\tb\tuses\n";
     // TGF → DOT
     let dot_output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "dot"])
+        .args(["--input-format", "tgf", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -68,7 +68,7 @@ fn tgf_to_dot_to_tgf_roundtrip() {
     let dot = String::from_utf8_lossy(&dot_output.stdout);
     // DOT → TGF
     let tgf_output = tool!("depconv")
-        .args(["--from", "dot", "--to", "tgf"])
+        .args(["--input-format", "dot", "--output-format", "tgf"])
         .write_stdin(dot.as_ref())
         .captured_output()
         .unwrap();
@@ -81,7 +81,7 @@ fn tgf_to_dot_to_tgf_roundtrip() {
 fn depfile_to_dot() {
     let input = "main.o: main.c config.h\n";
     let output = tool!("depconv")
-        .args(["--from", "depfile", "--to", "dot"])
+        .args(["--input-format", "depfile", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -105,7 +105,7 @@ digraph {
 fn depfile_to_tgf() {
     let input = include_str!("../../../data/depconv/small.d");
     let output = tool!("depconv")
-        .args(["--from", "depfile", "--to", "tgf"])
+        .args(["--input-format", "depfile", "--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -126,7 +126,7 @@ fn depfile_to_tgf() {
 fn depfile_auto_detect_content() {
     let input = "main.o: main.c config.h\n";
     let output = tool!("depconv")
-        .args(["--to", "tgf"])
+        .args(["--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -143,7 +143,7 @@ fn depfile_auto_detect_extension() {
     // Path relative to test CWD
     let fixture = "../../data/depconv/small.d";
     let output = tool!("depconv")
-        .args(["--to", "tgf", "-i", fixture])
+        .args(["--output-format", "tgf", "-i", fixture])
         .captured_output()
         .unwrap();
     assert!(output.status.success());
@@ -163,7 +163,7 @@ fn depfile_auto_detect_extension() {
 fn depfile_multi_target_fixture() {
     let input = include_str!("../../../data/depconv/multi-target.d");
     let output = tool!("depconv")
-        .args(["--from", "depfile", "--to", "dot"])
+        .args(["--input-format", "depfile", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -198,7 +198,7 @@ digraph {
 fn depfile_roundtrip() {
     let input = "main.o: main.c config.h\nutils.o: utils.c utils.h\n";
     let output = tool!("depconv")
-        .args(["--from", "depfile", "--to", "depfile"])
+        .args(["--input-format", "depfile", "--output-format", "depfile"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -211,7 +211,7 @@ fn depfile_roundtrip() {
 fn tgf_to_depfile() {
     let input = "3\tmyapp\n1\tlibfoo\n2\tlibbar\n#\n3\t1\n3\t2\n1\t2\n";
     let output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "depfile"])
+        .args(["--input-format", "tgf", "--output-format", "depfile"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -224,7 +224,7 @@ fn tgf_to_depfile() {
 fn pathlist_to_dot() {
     let input = "src/a.rs\nsrc/b.rs\nREADME.md\n";
     let output = tool!("depconv")
-        .args(["--from", "pathlist", "--to", "dot"])
+        .args(["--input-format", "pathlist", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -249,7 +249,7 @@ digraph {
 fn pathlist_auto_detect_content() {
     let input = "src/main.rs\nsrc/lib.rs\n";
     let output = tool!("depconv")
-        .args(["--to", "tgf"])
+        .args(["--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -265,7 +265,7 @@ fn pathlist_auto_detect_content() {
 fn tree_to_dot() {
     let input = "root\n├── a\n│   └── b\n└── c\n";
     let output = tool!("depconv")
-        .args(["--from", "tree", "--to", "dot"])
+        .args(["--input-format", "tree", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -291,7 +291,7 @@ digraph {
 fn tree_auto_detect_content() {
     let input = "root\n├── child\n";
     let output = tool!("depconv")
-        .args(["--to", "tgf"])
+        .args(["--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -308,7 +308,7 @@ fn tgf_to_tree() {
     // a -> b -> c, a -> d (diamond-like with branching at root)
     let input = "a\tAlpha\nb\tBravo\nc\tCharlie\nd\tDelta\n#\na\tb\na\td\nb\tc\n";
     let output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "tree"])
+        .args(["--input-format", "tgf", "--output-format", "tree"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -329,7 +329,7 @@ Alpha
 fn pathlist_roundtrip() {
     let input = "src/a.rs\nsrc/b.rs\nREADME.md\n";
     let output = tool!("depconv")
-        .args(["--from", "pathlist", "--to", "pathlist"])
+        .args(["--input-format", "pathlist", "--output-format", "pathlist"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -343,7 +343,7 @@ fn tgf_to_pathlist() {
     // a -> b -> c, a -> c (diamond: c is shared)
     let input = "a\tAlpha\nb\tBravo\nc\tCharlie\n#\na\tb\na\tc\nb\tc\n";
     let output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "pathlist"])
+        .args(["--input-format", "tgf", "--output-format", "pathlist"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -357,7 +357,7 @@ fn tgf_to_pathlist() {
 fn pathlist_to_pathlist_fixture() {
     let input = include_str!("../../../data/depconv/gitfiles.txt");
     let output = tool!("depconv")
-        .args(["--from", "pathlist", "--to", "pathlist"])
+        .args(["--input-format", "pathlist", "--output-format", "pathlist"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -371,7 +371,7 @@ fn pathlist_to_pathlist_fixture() {
 fn dot_to_dot() {
     let input = include_str!("../../../data/depconv/small.dot");
     let output = tool!("depconv")
-        .args(["--from", "dot", "--to", "dot"])
+        .args(["--input-format", "dot", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -406,7 +406,7 @@ digraph {
 }
 ";
     let output = tool!("depconv")
-        .args(["--from", "dot", "--to", "depfile"])
+        .args(["--input-format", "dot", "--output-format", "depfile"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -422,7 +422,7 @@ fn cmake_dot_preserves_subgraph() {
 
     // Parse -> emit -> re-parse.
     let output1 = tool!("depconv")
-        .args(["--from", "dot", "--to", "dot"])
+        .args(["--input-format", "dot", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -430,7 +430,7 @@ fn cmake_dot_preserves_subgraph() {
     let dot1 = String::from_utf8_lossy(&output1.stdout);
 
     let output2 = tool!("depconv")
-        .args(["--from", "dot", "--to", "dot"])
+        .args(["--input-format", "dot", "--output-format", "dot"])
         .write_stdin(dot1.as_ref())
         .captured_output()
         .unwrap();
@@ -477,7 +477,7 @@ myapp v1.0.0
     └── shared v1.0.0 (*)
 ";
     let output = tool!("depconv")
-        .args(["--from", "cargo-tree", "--to", "dot"])
+        .args(["--input-format", "cargo-tree", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -504,7 +504,7 @@ digraph {
 fn cargo_tree_auto_detect() {
     let input = include_str!("../../../data/depconv/cargo-tree.txt");
     let output = tool!("depconv")
-        .args(["--to", "tgf"])
+        .args(["--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -550,7 +550,7 @@ fn cargo_metadata_to_dot() {
     // Test with the real cargo-metadata.json fixture
     let input = include_str!("../../../data/depconv/cargo-metadata.json");
     let output = tool!("depconv")
-        .args(["--from", "cargo-metadata", "--to", "dot"])
+        .args(["--input-format", "cargo-metadata", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -643,7 +643,7 @@ digraph {
 
     // Parse DOT -> emit DOT
     let output1 = tool!("depconv")
-        .args(["--from", "dot", "--to", "dot"])
+        .args(["--input-format", "dot", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -653,7 +653,7 @@ digraph {
 
     // Parse again to verify round-trip stability
     let output2 = tool!("depconv")
-        .args(["--from", "dot", "--to", "dot"])
+        .args(["--input-format", "dot", "--output-format", "dot"])
         .write_stdin(stdout1.as_ref())
         .captured_output()
         .unwrap();
@@ -666,7 +666,7 @@ digraph {
 fn tgf_to_mermaid() {
     let input = "a\talpha\nb\tbravo\nc\n#\na\tb\tdepends\nb\tc\na\tc\n";
     let output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "mermaid"])
+        .args(["--input-format", "tgf", "--output-format", "mermaid"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -699,7 +699,7 @@ fn mermaid_node_types() {
 }
 "#;
     let output = tool!("depconv")
-        .args(["--from", "dot", "--to", "mermaid"])
+        .args(["--input-format", "dot", "--output-format", "mermaid"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -740,7 +740,7 @@ fn dot_to_mermaid_with_subgraphs() {
 }
 "#;
     let output = tool!("depconv")
-        .args(["--from", "dot", "--to", "mermaid"])
+        .args(["--input-format", "dot", "--output-format", "mermaid"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -764,7 +764,7 @@ fn dot_to_mermaid_with_subgraphs() {
 fn mermaid_special_chars() {
     let input = "a\tLabel [with] \"quotes\"\nb\tOther{label}\n#\na\tb\tuses|pipes\n";
     let output = tool!("depconv")
-        .args(["--from", "tgf", "--to", "mermaid"])
+        .args(["--input-format", "tgf", "--output-format", "mermaid"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -785,7 +785,7 @@ flowchart LR
 fn depfile_to_mermaid() {
     let input = "main.o: main.c config.h\n";
     let output = tool!("depconv")
-        .args(["--from", "depfile", "--to", "mermaid"])
+        .args(["--input-format", "depfile", "--output-format", "mermaid"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -808,7 +808,7 @@ flowchart LR
 fn mermaid_to_tgf() {
     let input = "flowchart LR\n    A[myapp] --> B[libfoo]\n    A --> C[libbar]\n    B --> C\n";
     let output = tool!("depconv")
-        .args(["--from", "mermaid", "--to", "tgf"])
+        .args(["--input-format", "mermaid", "--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -824,7 +824,7 @@ fn mermaid_to_tgf() {
 fn mermaid_to_dot() {
     let input = "flowchart LR\n    A[myapp] --> B[libfoo]\n    A --> C[libbar]\n    B --> C\n";
     let output = tool!("depconv")
-        .args(["--from", "mermaid", "--to", "dot"])
+        .args(["--input-format", "mermaid", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -850,7 +850,7 @@ digraph {
 fn mermaid_auto_detect() {
     let input = "flowchart LR\n    A[myapp] --> B[libfoo]\n";
     let output = tool!("depconv")
-        .args(["--to", "tgf"])
+        .args(["--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -864,7 +864,7 @@ fn mermaid_roundtrip() {
     let input = "flowchart LR\n    A[myapp] --> B[libfoo]\n    A --> C[libbar]\n    B --> C\n";
     // parse mermaid -> emit mermaid
     let output1 = tool!("depconv")
-        .args(["--from", "mermaid", "--to", "mermaid"])
+        .args(["--input-format", "mermaid", "--output-format", "mermaid"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -873,7 +873,7 @@ fn mermaid_roundtrip() {
 
     // parse again -> emit again, should be stable
     let output2 = tool!("depconv")
-        .args(["--from", "mermaid", "--to", "mermaid"])
+        .args(["--input-format", "mermaid", "--output-format", "mermaid"])
         .write_stdin(mmd1.as_ref())
         .captured_output()
         .unwrap();
@@ -887,7 +887,7 @@ fn mermaid_roundtrip() {
 fn mermaid_subgraph_to_dot() {
     let input = include_str!("../../../data/depconv/subgraph.mmd");
     let output = tool!("depconv")
-        .args(["--from", "mermaid", "--to", "dot"])
+        .args(["--input-format", "mermaid", "--output-format", "dot"])
         .write_stdin(input)
         .captured_output()
         .unwrap();
@@ -922,7 +922,7 @@ digraph {
 fn mermaid_edge_labels_to_tgf() {
     let input = include_str!("../../../data/depconv/flowchart.mmd");
     let output = tool!("depconv")
-        .args(["--from", "mermaid", "--to", "tgf"])
+        .args(["--input-format", "mermaid", "--output-format", "tgf"])
         .write_stdin(input)
         .captured_output()
         .unwrap();

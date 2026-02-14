@@ -7,20 +7,12 @@ use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
 
 /// Dependency graph format converter.
 ///
-/// Formats are auto-detected from file extensions or content when --from/--to are not specified.
+/// Formats are auto-detected from file extensions or content when --input-format/--output-format are not specified.
 #[derive(Debug, Parser)]
 #[clap(version, verbatim_doc_comment)]
 struct Args {
     #[clap(short, long, default_value_t = tracing::Level::INFO)]
     log_level: tracing::Level,
-
-    /// Input format (auto-detected from extension or content if omitted)
-    #[clap(short, long)]
-    from: Option<InputFormat>,
-
-    /// Output format (auto-detected from output extension if omitted, defaults to DOT)
-    #[clap(short, long)]
-    to: Option<OutputFormat>,
 
     /// Print the detected input format and exit
     #[clap(long)]
@@ -30,9 +22,17 @@ struct Args {
     #[clap(short, long)]
     input: Option<PathBuf>,
 
+    /// Input format (auto-detected from extension or content if omitted)
+    #[clap(short = 'I', long)]
+    input_format: Option<InputFormat>,
+
     /// Path to the output. stdout if '-' or omitted
     #[clap(short, long)]
     output: Option<PathBuf>,
+
+    /// Output format (auto-detected from output extension if omitted, defaults to DOT)
+    #[clap(short = 'O', long)]
+    output_format: Option<OutputFormat>,
 }
 
 fn main() -> eyre::Result<()> {
@@ -62,16 +62,16 @@ fn main() -> eyre::Result<()> {
     let mut input_text = String::new();
     input.read_to_string(&mut input_text)?;
 
-    let from = resolve_input_format(args.from, input_path.as_deref(), &input_text)?;
+    let input_format = resolve_input_format(args.input_format, input_path.as_deref(), &input_text)?;
 
     if args.detect {
-        println!("{from}");
+        println!("{input_format}");
         return Ok(());
     }
 
-    let to = resolve_output_format(args.to, output_path.as_deref())?;
+    let output_format = resolve_output_format(args.output_format, output_path.as_deref())?;
 
-    let mut graph = csvizmo_depgraph::parse::parse(from, &input_text)?;
+    let mut graph = csvizmo_depgraph::parse::parse(input_format, &input_text)?;
     tracing::info!(
         "Parsed graph with {} nodes, {} edges, and {} subgraphs",
         graph.all_nodes().len(),
@@ -82,7 +82,7 @@ fn main() -> eyre::Result<()> {
     csvizmo_depgraph::style::apply_default_styles(&mut graph);
 
     let mut output = get_output_writer(&output_path)?;
-    csvizmo_depgraph::emit::emit(to, &graph, &mut output)?;
+    csvizmo_depgraph::emit::emit(output_format, &graph, &mut output)?;
 
     Ok(())
 }
@@ -113,8 +113,8 @@ fn resolve_input_format(
     }
     // Bail, but try to give a better error based on whether the extension detection failed
     match ext_err {
-        Some(e) => Err(e.wrap_err("cannot detect input format; use --from")),
-        None => eyre::bail!("cannot detect input format; use --from"),
+        Some(e) => Err(e.wrap_err("cannot detect input format; use --input-format")),
+        None => eyre::bail!("cannot detect input format; use --input-format"),
     }
 }
 
@@ -133,7 +133,9 @@ fn resolve_output_format(
         }
         Some(Err(e)) => {
             // TODO: I can't decide if this should error or default to DOT
-            Err(e.wrap_err("Failed to detect output format from file extension; use --to"))
+            Err(e.wrap_err(
+                "Failed to detect output format from file extension; use --output-format",
+            ))
         }
         None => Ok(OutputFormat::Dot),
     }

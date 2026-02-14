@@ -176,18 +176,19 @@ Multiple options are available to customize and tune the output. See `minpath --
 ## depconv
 
 Convert dependency graphs between formats. Reads from stdin or a file, writes to stdout or a file.
-Input and output formats are auto-detected from file extensions or content when `--from`/`--to` are
-not specified. Defaults to DOT output when no output format can be inferred.
+Input and output formats are auto-detected from file extensions or content when
+`--input-format`/`--output-format` are not specified. Defaults to DOT output when no output format
+can be inferred.
 
 ```sh
-$ echo -e "a Node A\nb Node B\n#\na b depends on" | depconv --to dot
+$ echo -e "a Node A\nb Node B\n#\na b depends on" | depconv --output-format dot
 digraph {
     a [label="Node A"]
     b [label="Node B"]
     a -> b [label="depends on"]
 }
 
-$ cargo tree --depth 1 | depconv --to tgf
+$ cargo tree --depth 1 | depconv --output-format tgf
 csvizmo v0.1.0
 clap v4.5.39
 ...
@@ -198,16 +199,16 @@ csvizmo v0.1.0 clap v4.5.39
 
 ### Supported formats
 
-| Format         | `--from` | `--to` | Description                                                                     |
-| -------------- | :------: | :----: | ------------------------------------------------------------------------------- |
-| DOT (GraphViz) |   yes    |  yes   | `digraph` / `graph` syntax. Parses cmake, ninja, bitbake, and ad-hoc DOT output |
-| Mermaid        |   yes    |  yes   | `flowchart` / `graph` graph types                                               |
-| TGF            |   yes    |  yes   | Trivial Graph Format                                                            |
-| Depfile        |   yes    |  yes   | Makefile `.d` depfile                                                           |
-| Tree           |   yes    |  yes   | Box-drawing trees (`tree` CLI output)                                           |
-| Pathlist       |   yes    |  yes   | One path per line; hierarchy inferred from `/` separators                       |
-| Cargo tree     |   yes    |   --   | `cargo tree` output                                                             |
-| Cargo metadata |   yes    |   --   | `cargo metadata --format-version=1` JSON                                        |
+| Format         | `--input-format` | `--output-format` | Description                                                                     |
+| -------------- | :--------------: | :---------------: | ------------------------------------------------------------------------------- |
+| DOT (GraphViz) |       yes        |        yes        | `digraph` / `graph` syntax. Parses cmake, ninja, bitbake, and ad-hoc DOT output |
+| Mermaid        |       yes        |        yes        | `flowchart` / `graph` graph types                                               |
+| TGF            |       yes        |        yes        | Trivial Graph Format                                                            |
+| Depfile        |       yes        |        yes        | Makefile `.d` depfile                                                           |
+| Tree           |       yes        |        yes        | Box-drawing trees (`tree` CLI output)                                           |
+| Pathlist       |       yes        |        yes        | One path per line; hierarchy inferred from `/` separators                       |
+| Cargo tree     |       yes        |        --         | `cargo tree` output                                                             |
+| Cargo metadata |       yes        |        --         | `cargo metadata --format-version=1` JSON                                        |
 
 ### What's preserved across formats
 
