@@ -171,7 +171,6 @@ fn select_multiple_patterns_and() {
 // -- filter integration tests: one per CLI flag --
 
 #[test]
-#[ignore]
 fn filter_single_pattern() {
     let output = tool!("depfilter")
         .args([
@@ -192,7 +191,6 @@ fn filter_single_pattern() {
 }
 
 #[test]
-#[ignore]
 fn filter_with_and() {
     let graph = "libfoo-alpha\nlibfoo-beta\nlibbar-alpha\n#\n";
     let output = tool!("depfilter")
@@ -313,7 +311,6 @@ digraph {
 }
 
 #[test]
-#[ignore]
 fn filter_dot_input() {
     let dot_input = "\
 digraph {

@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 use clap::Parser;
 
 use super::{MatchKey, build_globset};
-use crate::DepGraph;
+use crate::{DepGraph, FlatGraphView};
 
 #[derive(Clone, Debug, Default, Parser)]
 pub struct FilterArgs {
@@ -64,9 +66,33 @@ impl FilterArgs {
 }
 
 pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
-    let _globset = build_globset(&args.pattern)?;
-    // TODO: implement filter logic
-    Ok(graph.clone())
+    let globset = build_globset(&args.pattern)?;
+    let view = FlatGraphView::new(graph);
+
+    // Find nodes that match the patterns (these will be removed).
+    let mut matched = HashSet::new();
+    for (id, info) in graph.all_nodes() {
+        let text = match args.key {
+            MatchKey::Id => id,
+            MatchKey::Label => info.label.as_str(),
+        };
+
+        let is_match = if args.and {
+            globset.matches(text).len() == args.pattern.len()
+        } else {
+            globset.is_match(text)
+        };
+
+        if is_match && let Some(&idx) = view.id_to_idx.get(id) {
+            matched.insert(idx);
+        }
+    }
+
+    // Keep set = all nodes minus matched nodes.
+    let all_nodes: HashSet<_> = view.id_to_idx.values().copied().collect();
+    let keep: HashSet<_> = all_nodes.difference(&matched).copied().collect();
+
+    Ok(view.filter(&keep))
 }
 
 #[cfg(test)]
@@ -107,7 +133,6 @@ mod tests {
     // -- pattern matching --
 
     #[test]
-    #[ignore]
     fn single_pattern() {
         // myapp -> libfoo -> libbar, myapp -> libbar
         let g = make_graph(
@@ -129,7 +154,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn multiple_patterns_or() {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
@@ -142,7 +166,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn multiple_patterns_and() {
         let g = make_graph(
             &[
@@ -161,7 +184,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn no_match_returns_unchanged() {
         let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b")]);
         let args = FilterArgs::default().pattern("nonexistent");
