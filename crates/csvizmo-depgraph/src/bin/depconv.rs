@@ -1,5 +1,5 @@
 use std::io::{IsTerminal, Read};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
 use csvizmo_depgraph::{InputFormat, OutputFormat};
@@ -62,14 +62,19 @@ fn main() -> eyre::Result<()> {
     let mut input_text = String::new();
     input.read_to_string(&mut input_text)?;
 
-    let input_format = resolve_input_format(args.input_format, input_path.as_deref(), &input_text)?;
+    let input_format = csvizmo_depgraph::resolve_input_format(
+        args.input_format,
+        input_path.as_deref(),
+        &input_text,
+    )?;
 
     if args.detect {
         println!("{input_format}");
         return Ok(());
     }
 
-    let output_format = resolve_output_format(args.output_format, output_path.as_deref())?;
+    let output_format =
+        csvizmo_depgraph::resolve_output_format(args.output_format, output_path.as_deref())?;
 
     let mut graph = csvizmo_depgraph::parse::parse(input_format, &input_text)?;
     tracing::info!(
@@ -85,58 +90,4 @@ fn main() -> eyre::Result<()> {
     csvizmo_depgraph::emit::emit(output_format, &graph, &mut output)?;
 
     Ok(())
-}
-
-/// Resolve input format: explicit flag > file extension > content detection.
-fn resolve_input_format(
-    flag: Option<InputFormat>,
-    path: Option<&Path>,
-    input: &str,
-) -> eyre::Result<InputFormat> {
-    if let Some(f) = flag {
-        return Ok(f);
-    }
-    let ext_err = match path.map(InputFormat::try_from) {
-        Some(Ok(f)) => {
-            tracing::info!("Detected input format: {f:?} from file extension");
-            return Ok(f);
-        }
-        // There was an error with the extension detection, but we'll try content detection before bailing
-        Some(Err(e)) => Some(e),
-        // There was no path
-        None => None,
-    };
-    // Try to detect type from content before bailing
-    if let Some(f) = csvizmo_depgraph::detect::detect(input) {
-        tracing::info!("Detected input format: {f:?} from content");
-        return Ok(f);
-    }
-    // Bail, but try to give a better error based on whether the extension detection failed
-    match ext_err {
-        Some(e) => Err(e.wrap_err("cannot detect input format; use --input-format")),
-        None => eyre::bail!("cannot detect input format; use --input-format"),
-    }
-}
-
-/// Resolve output format: explicit flag > file extension > default to DOT.
-fn resolve_output_format(
-    flag: Option<OutputFormat>,
-    path: Option<&Path>,
-) -> eyre::Result<OutputFormat> {
-    if let Some(f) = flag {
-        return Ok(f);
-    }
-    match path.map(OutputFormat::try_from) {
-        Some(Ok(f)) => {
-            tracing::info!("Detected output format: {f:?} from file extension");
-            Ok(f)
-        }
-        Some(Err(e)) => {
-            // TODO: I can't decide if this should error or default to DOT
-            Err(e.wrap_err(
-                "Failed to detect output format from file extension; use --output-format",
-            ))
-        }
-        None => Ok(OutputFormat::Dot),
-    }
 }

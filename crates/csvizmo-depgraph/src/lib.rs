@@ -185,3 +185,64 @@ pub struct Edge {
     /// Arbitrary extra attributes (e.g. DOT `style`, `color`).
     pub attrs: IndexMap<String, String>,
 }
+
+/// Resolve input format using explicit flag, file extension, or content detection.
+///
+/// Resolution order:
+/// 1. Explicit flag if provided
+/// 2. File extension if path is available
+/// 3. Content detection from input string
+///
+/// Returns an error if format cannot be determined.
+pub fn resolve_input_format(
+    flag: Option<InputFormat>,
+    path: Option<&Path>,
+    input: &str,
+) -> eyre::Result<InputFormat> {
+    if let Some(f) = flag {
+        return Ok(f);
+    }
+    let ext_err = match path.map(InputFormat::try_from) {
+        Some(Ok(f)) => {
+            tracing::info!("Detected input format: {f:?} from file extension");
+            return Ok(f);
+        }
+        Some(Err(e)) => Some(e),
+        None => None,
+    };
+    if let Some(f) = detect::detect(input) {
+        tracing::info!("Detected input format: {f:?} from content");
+        return Ok(f);
+    }
+    match ext_err {
+        Some(e) => Err(e.wrap_err("cannot detect input format; use --input-format")),
+        None => eyre::bail!("cannot detect input format; use --input-format"),
+    }
+}
+
+/// Resolve output format using explicit flag, file extension, or default to DOT.
+///
+/// Resolution order:
+/// 1. Explicit flag if provided
+/// 2. File extension if path is available
+/// 3. Default to DOT format
+///
+/// Returns an error if file extension is present but unrecognized.
+pub fn resolve_output_format(
+    flag: Option<OutputFormat>,
+    path: Option<&Path>,
+) -> eyre::Result<OutputFormat> {
+    if let Some(f) = flag {
+        return Ok(f);
+    }
+    match path.map(OutputFormat::try_from) {
+        Some(Ok(f)) => {
+            tracing::info!("Detected output format: {f:?} from file extension");
+            Ok(f)
+        }
+        Some(Err(e)) => Err(
+            e.wrap_err("Failed to detect output format from file extension; use --output-format")
+        ),
+        None => Ok(OutputFormat::Dot),
+    }
+}
