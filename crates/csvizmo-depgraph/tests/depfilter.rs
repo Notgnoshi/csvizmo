@@ -215,7 +215,6 @@ fn filter_with_and() {
 }
 
 #[test]
-#[ignore]
 fn filter_with_deps() {
     let output = tool!("depfilter")
         .args([
@@ -237,7 +236,6 @@ fn filter_with_deps() {
 }
 
 #[test]
-#[ignore]
 fn filter_with_ancestors() {
     let output = tool!("depfilter")
         .args([

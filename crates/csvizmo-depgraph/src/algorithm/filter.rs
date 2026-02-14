@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use clap::Parser;
+use petgraph::Direction;
 
 use super::{MatchKey, build_globset};
 use crate::{DepGraph, FlatGraphView};
@@ -86,6 +87,19 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
         if is_match && let Some(&idx) = view.id_to_idx.get(id) {
             matched.insert(idx);
         }
+    }
+
+    // Cascade removal via BFS if --deps or --ancestors is set.
+    let direction = if args.ancestors {
+        Some(Direction::Incoming)
+    } else if args.deps {
+        Some(Direction::Outgoing)
+    } else {
+        None
+    };
+
+    if let Some(dir) = direction {
+        matched = view.bfs(matched, dir, None);
     }
 
     // Keep set = all nodes minus matched nodes.
@@ -195,7 +209,6 @@ mod tests {
     // -- traversal --
 
     #[test]
-    #[ignore]
     fn with_deps_cascade() {
         // a -> b -> c, a -> c
         let g = make_graph(
@@ -208,7 +221,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn with_ancestors_cascade() {
         // a -> b -> c
         let g = make_graph(
