@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::transform::LocalTransform;
 
-/// Replace /home/<user> with ~
+/// Replace `/home/<user>` with `~`
 pub struct HomeDir;
 
 impl LocalTransform for HomeDir {

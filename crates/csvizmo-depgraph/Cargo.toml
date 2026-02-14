@@ -1,0 +1,32 @@
+[package]
+name = "csvizmo-depgraph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+metadata.license-note = "Enabling the `dot` feature links GPL-2.0-only code (dot-parser); the resulting binary is GPL-2.0 when distributed."
+rust-version.workspace = true
+
+description = "Dependency graph utilities"
+
+[dependencies]
+cargo_metadata.workspace = true
+clap.workspace = true
+color-eyre.workspace = true
+csvizmo-utils.workspace = true
+dot-parser = { workspace = true, optional = true }
+either = { workspace = true, optional = true }
+eyre.workspace = true
+indexmap.workspace = true
+mermaid-rs-renderer.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[features]
+default = ["dot"]
+dot = ["dep:dot-parser", "dep:either"]
+
+[dev-dependencies]
+csvizmo-test.workspace = true
+pretty_assertions.workspace = true

@@ -8,7 +8,7 @@ use eyre::WrapErr;
 ///
 /// If `-` or if `None`, use stdout, otherwise use the given file
 ///
-/// The generated writer is _not_ buffered, because [csv::Writer] is buffered
+/// The generated writer is _not_ buffered, because `csv::Writer` is buffered
 pub fn get_output_writer(output: &Option<PathBuf>) -> eyre::Result<Box<dyn Write>> {
     match output {
         None => Ok(Box::new(std::io::stdout())),

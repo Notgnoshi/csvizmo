@@ -24,7 +24,7 @@ pub enum CandumpFormat {
     CanUtilsCli,
 }
 
-/// Parse [CanFrame]s from the given reader
+/// Parse [`CanMessage`]s from the given reader
 pub struct CandumpParser<R: Read> {
     format: CandumpFormat,
     lines: Lines<BufReader<R>>,
@@ -64,7 +64,7 @@ impl<R: Read> Iterator for CandumpParser<R> {
 }
 
 impl CandumpFormat {
-    /// Attempt to parse a [CanFrame] from the given line
+    /// Attempt to parse a [`CanMessage`] from the given line
     pub fn parse(&mut self, line: &str) -> eyre::Result<CanMessage> {
         match self {
             CandumpFormat::Auto => {

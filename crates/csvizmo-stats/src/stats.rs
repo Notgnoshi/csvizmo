@@ -21,8 +21,8 @@ pub fn median(data: &[f64]) -> f64 {
 
 /// Calculate Q1, Q2 (median), and Q3 quartiles of the given data
 ///
-/// Requires the data be sorted in ascending order. Any NaNs sorted to the top with
-/// [nan_safe_sort()] will be excluded.
+/// Requires the data be sorted in ascending order. Any NaNs sorted to the top with `OrderedFloat`
+/// will be excluded.
 pub fn quartiles(data: &[f64]) -> Option<(f64, f64, f64)> {
     let mut num_nans: usize = 0;
     for maybe_nan in data.iter().rev() {

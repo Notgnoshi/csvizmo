@@ -1,0 +1,14 @@
+flowchart TD
+    subgraph backend
+        api[API Server]
+        db[Database]
+        cache[Redis Cache]
+    end
+    subgraph frontend
+        web[Web App]
+        mobile[Mobile App]
+    end
+    web --> api
+    mobile --> api
+    api --> db
+    api --> cache
