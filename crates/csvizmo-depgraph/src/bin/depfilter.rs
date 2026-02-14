@@ -21,19 +21,19 @@ struct Args {
     log_level: tracing::Level,
 
     /// Input file (stdin if '-' or omitted)
-    #[clap(short, long)]
+    #[clap(short, long, global = true)]
     input: Option<PathBuf>,
 
     /// Input format (auto-detected from extension/content if omitted)
-    #[clap(short = 'I', long)]
+    #[clap(short = 'I', long, global = true)]
     input_format: Option<InputFormat>,
 
     /// Output file (stdout if '-' or omitted)
-    #[clap(short, long)]
+    #[clap(short, long, global = true)]
     output: Option<PathBuf>,
 
     /// Output format (auto-detected from extension, defaults to DOT)
-    #[clap(short = 'O', long)]
+    #[clap(short = 'O', long, global = true)]
     output_format: Option<OutputFormat>,
 
     #[clap(subcommand)]

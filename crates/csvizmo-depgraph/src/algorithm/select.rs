@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 use clap::Parser;
 
 use super::{MatchKey, build_globset};
-use crate::DepGraph;
+use crate::{DepGraph, FlatGraphView};
 
 #[derive(Clone, Debug, Default, Parser)]
 pub struct SelectArgs {
@@ -63,7 +65,26 @@ impl SelectArgs {
 }
 
 pub fn select(graph: &DepGraph, args: &SelectArgs) -> eyre::Result<DepGraph> {
-    let _globset = build_globset(&args.pattern)?;
-    // TODO: implement select logic
-    Ok(graph.clone())
+    let globset = build_globset(&args.pattern)?;
+    let view = FlatGraphView::new(graph);
+
+    let mut keep = HashSet::new();
+    for (id, info) in graph.all_nodes() {
+        let text = match args.key {
+            MatchKey::Id => id,
+            MatchKey::Label => info.label.as_str(),
+        };
+
+        let matched = if args.and {
+            globset.matches(text).len() == args.pattern.len()
+        } else {
+            globset.is_match(text)
+        };
+
+        if matched && let Some(&idx) = view.id_to_idx.get(id) {
+            keep.insert(idx);
+        }
+    }
+
+    Ok(view.filter(&keep))
 }

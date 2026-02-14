@@ -6,7 +6,6 @@ use pretty_assertions::assert_eq;
 const SIMPLE_GRAPH: &str = "1\tlibfoo\n2\tlibbar\n3\tmyapp\n#\n3\t1\n3\t2\n1\t2\n";
 
 #[test]
-#[ignore]
 fn select_single_pattern() {
     let output = tool!("depfilter")
         .args([
@@ -27,7 +26,6 @@ fn select_single_pattern() {
 }
 
 #[test]
-#[ignore]
 fn select_by_id() {
     let output = tool!("depfilter")
         .args([
@@ -50,7 +48,6 @@ fn select_by_id() {
 }
 
 #[test]
-#[ignore]
 fn select_by_label() {
     let output = tool!("depfilter")
         .args([
@@ -149,7 +146,6 @@ fn select_with_depth() {
 }
 
 #[test]
-#[ignore]
 fn select_multiple_patterns_or() {
     let output = tool!("depfilter")
         .args([
@@ -173,11 +169,10 @@ fn select_multiple_patterns_or() {
 }
 
 #[test]
-#[ignore]
 fn select_multiple_patterns_and() {
     // Graph with nodes that match multiple criteria
     let graph =
-        "libfoo-alpha\tlibfoo-alpha\nlibfoo-beta\tlibfoo-beta\nlibbar-alpha\tlibbar-alpha\n#\n";
+        "libfoo-alpha\nlibfoo-beta\nlibbar-alpha\n#\n";
     let output = tool!("depfilter")
         .args([
             "select",
@@ -197,7 +192,7 @@ fn select_multiple_patterns_and() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Should include only libfoo-alpha (matches both patterns)
-    assert_eq!(stdout, "libfoo-alpha\tlibfoo-alpha\n#\n");
+    assert_eq!(stdout, "libfoo-alpha\n#\n");
 }
 
 #[test]
@@ -399,7 +394,6 @@ fn filter_multiple_patterns_and() {
 }
 
 #[test]
-#[ignore]
 fn select_empty_result() {
     let output = tool!("depfilter")
         .args([
@@ -443,7 +437,6 @@ fn filter_empty_result() {
 }
 
 #[test]
-#[ignore]
 fn select_dot_output() {
     let output = tool!("depfilter")
         .args([
