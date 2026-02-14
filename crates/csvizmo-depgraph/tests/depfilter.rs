@@ -257,7 +257,6 @@ fn filter_with_ancestors() {
 }
 
 #[test]
-#[ignore]
 fn filter_with_preserve_connectivity() {
     let chain_graph = "a\nb\nc\n#\na\tb\nb\tc\n";
     let output = tool!("depfilter")

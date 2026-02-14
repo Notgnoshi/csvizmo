@@ -1,10 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use clap::Parser;
 use petgraph::Direction;
+use petgraph::graph::NodeIndex;
 
 use super::{MatchKey, build_globset};
-use crate::{DepGraph, FlatGraphView};
+use crate::{DepGraph, Edge, FlatGraphView};
 
 #[derive(Clone, Debug, Default, Parser)]
 pub struct FilterArgs {
@@ -106,7 +107,68 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
     let all_nodes: HashSet<_> = view.id_to_idx.values().copied().collect();
     let keep: HashSet<_> = all_nodes.difference(&matched).copied().collect();
 
-    Ok(view.filter(&keep))
+    let mut result = view.filter(&keep);
+
+    // Bypass removed nodes: connect their surviving predecessors to surviving successors.
+    // BFS through chains of removed nodes so that A->B->C->D with B,C removed produces A->D.
+    if args.preserve_connectivity {
+        let mut existing: HashSet<(String, String)> = result
+            .edges
+            .iter()
+            .map(|e| (e.from.clone(), e.to.clone()))
+            .collect();
+
+        for &idx in &matched {
+            let preds = surviving_neighbors(&view.pg, idx, Direction::Incoming, &keep);
+            let succs = surviving_neighbors(&view.pg, idx, Direction::Outgoing, &keep);
+
+            for &pred in &preds {
+                let from = view.idx_to_id[pred.index()];
+                for &succ in &succs {
+                    let to = view.idx_to_id[succ.index()];
+                    if from != to && existing.insert((from.to_string(), to.to_string())) {
+                        result.edges.push(Edge {
+                            from: from.to_string(),
+                            to: to.to_string(),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+/// BFS from `start` in `direction`, traversing through removed nodes (those not in `keep`),
+/// returning surviving nodes found at the boundary.
+fn surviving_neighbors(
+    pg: &petgraph::Graph<(), ()>,
+    start: NodeIndex,
+    direction: Direction,
+    keep: &HashSet<NodeIndex>,
+) -> Vec<NodeIndex> {
+    let mut result = Vec::new();
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::new();
+    visited.insert(start);
+    queue.push_back(start);
+
+    while let Some(node) = queue.pop_front() {
+        for neighbor in pg.neighbors_directed(node, direction) {
+            if !visited.insert(neighbor) {
+                continue;
+            }
+            if keep.contains(&neighbor) {
+                result.push(neighbor);
+            } else {
+                queue.push_back(neighbor);
+            }
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -235,7 +297,6 @@ mod tests {
     // -- preserve connectivity --
 
     #[test]
-    #[ignore]
     fn preserve_connectivity_bypass() {
         // a -> b -> c: remove b, get a -> c
         let g = make_graph(
@@ -249,7 +310,38 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    fn preserve_connectivity_chain() {
+        // a -> b -> c -> d: remove b and c, get a -> d
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
+            &[("a", "b"), ("b", "c"), ("c", "d")],
+        );
+        let args = FilterArgs::default()
+            .pattern("b")
+            .pattern("c")
+            .preserve_connectivity();
+        let result = filter(&g, &args).unwrap();
+        assert_eq!(node_ids(&result), vec!["a", "d"]);
+        assert_eq!(edge_pairs(&result), vec![("a", "d")]);
+    }
+
+    #[test]
+    fn preserve_connectivity_diamond_through_removed() {
+        // a -> b -> d, a -> c -> d: remove b and c, get single a -> d
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
+            &[("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")],
+        );
+        let args = FilterArgs::default()
+            .pattern("b")
+            .pattern("c")
+            .preserve_connectivity();
+        let result = filter(&g, &args).unwrap();
+        assert_eq!(node_ids(&result), vec!["a", "d"]);
+        assert_eq!(edge_pairs(&result), vec![("a", "d")]);
+    }
+
+    #[test]
     fn preserve_connectivity_no_self_loops() {
         // a -> b -> a: remove b, should not create a -> a
         let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b"), ("b", "a")]);
@@ -260,7 +352,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn preserve_connectivity_no_parallel_edges() {
         // a -> b -> c, a -> c: remove b, should not duplicate a -> c
         let g = make_graph(
