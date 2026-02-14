@@ -168,6 +168,8 @@ fn select_multiple_patterns_and() {
     assert_eq!(stdout, "libfoo-alpha\n#\n");
 }
 
+// -- filter integration tests: one per CLI flag --
+
 #[test]
 #[ignore]
 fn filter_single_pattern() {
@@ -186,161 +188,13 @@ fn filter_single_pattern() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should remove libfoo but keep myapp -> libbar edge
     assert_eq!(stdout, "2\tlibbar\n3\tmyapp\n#\n3\t2\n");
 }
 
 #[test]
 #[ignore]
-fn filter_with_deps_cascade() {
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "myapp",
-            "--deps",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(SIMPLE_GRAPH)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should remove myapp and all its dependencies (libfoo, libbar), leaving nothing
-    assert_eq!(stdout, "#\n");
-}
-
-#[test]
-#[ignore]
-fn filter_with_ancestors_cascade() {
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "libbar",
-            "--ancestors",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(SIMPLE_GRAPH)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should remove libbar and all nodes that depend on it (libfoo, myapp), leaving nothing
-    assert_eq!(stdout, "#\n");
-}
-
-#[test]
-#[ignore]
-fn filter_preserve_connectivity() {
-    // Graph: a -> b -> c
-    let chain_graph = "a\nb\nc\n#\na\tb\nb\tc\n";
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "b",
-            "--preserve-connectivity",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(chain_graph)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should remove b but create direct edge a -> c
-    assert_eq!(stdout, "a\nc\n#\na\tc\n");
-}
-
-#[test]
-#[ignore]
-fn filter_preserve_connectivity_no_self_loops() {
-    // Graph: a -> b, b -> a (cycle)
-    let cycle_graph = "a\nb\n#\na\tb\nb\ta\n";
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "b",
-            "--preserve-connectivity",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(cycle_graph)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should remove b, and not create self-loop a -> a
-    assert_eq!(stdout, "a\n#\n");
-}
-
-#[test]
-#[ignore]
-fn filter_preserve_connectivity_no_parallel_edges() {
-    // Graph: a -> b -> c, a -> c (b is already bypassed)
-    let graph = "a\nb\nc\n#\na\tb\nb\tc\na\tc\n";
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "b",
-            "--preserve-connectivity",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(graph)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should remove b and not create duplicate a -> c edge
-    assert_eq!(stdout, "a\nc\n#\na\tc\n");
-}
-
-#[test]
-#[ignore]
-fn filter_multiple_patterns_or() {
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "libfoo",
-            "--pattern",
-            "libbar",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(SIMPLE_GRAPH)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should remove both libfoo and libbar (OR logic), leaving only myapp
-    assert_eq!(stdout, "3\tmyapp\n#\n");
-}
-
-#[test]
-#[ignore]
-fn filter_multiple_patterns_and() {
-    // Graph with nodes that match multiple criteria
-    let graph =
-        "libfoo-alpha\tlibfoo-alpha\nlibfoo-beta\tlibfoo-beta\nlibbar-alpha\tlibbar-alpha\n#\n";
+fn filter_with_and() {
+    let graph = "libfoo-alpha\nlibfoo-beta\nlibbar-alpha\n#\n";
     let output = tool!("depfilter")
         .args([
             "filter",
@@ -359,21 +213,18 @@ fn filter_multiple_patterns_and() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should remove only libfoo-alpha (matches both patterns)
-    assert_eq!(
-        stdout,
-        "libfoo-beta\tlibfoo-beta\nlibbar-alpha\tlibbar-alpha\n#\n"
-    );
+    assert_eq!(stdout, "libfoo-beta\nlibbar-alpha\n#\n");
 }
 
 #[test]
 #[ignore]
-fn filter_empty_result() {
+fn filter_with_deps() {
     let output = tool!("depfilter")
         .args([
             "filter",
             "--pattern",
-            "nonexistent",
+            "myapp",
+            "--deps",
             "--input-format",
             "tgf",
             "--output-format",
@@ -384,8 +235,52 @@ fn filter_empty_result() {
         .unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Should return original graph unchanged
-    assert_eq!(stdout, SIMPLE_GRAPH);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+#[ignore]
+fn filter_with_ancestors() {
+    let output = tool!("depfilter")
+        .args([
+            "filter",
+            "--pattern",
+            "libbar",
+            "--ancestors",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(SIMPLE_GRAPH)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+#[ignore]
+fn filter_with_preserve_connectivity() {
+    let chain_graph = "a\nb\nc\n#\na\tb\nb\tc\n";
+    let output = tool!("depfilter")
+        .args([
+            "filter",
+            "--pattern",
+            "b",
+            "--preserve-connectivity",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(chain_graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nc\n#\na\tc\n");
 }
 
 #[test]
