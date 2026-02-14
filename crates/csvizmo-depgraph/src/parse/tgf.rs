@@ -42,7 +42,9 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
             });
         } else {
             // Node line: "id [label...]"
-            let id = parts.next().unwrap();
+            let id = parts
+                .next()
+                .ok_or_else(|| eyre::eyre!("invalid node line: {line:?}"))?;
             graph.nodes.insert(
                 id.to_string(),
                 NodeInfo {
