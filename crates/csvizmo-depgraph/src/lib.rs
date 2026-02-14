@@ -6,6 +6,7 @@ use indexmap::IndexMap;
 
 pub mod detect;
 pub mod emit;
+pub mod graph;
 pub mod parse;
 pub mod style;
 

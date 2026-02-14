@@ -17,6 +17,7 @@ dot-parser = { workspace = true, optional = true }
 either = { workspace = true, optional = true }
 eyre.workspace = true
 indexmap.workspace = true
+petgraph.workspace = true
 mermaid-rs-renderer.workspace = true
 serde.workspace = true
 serde_json.workspace = true
