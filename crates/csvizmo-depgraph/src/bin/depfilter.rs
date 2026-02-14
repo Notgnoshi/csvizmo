@@ -2,6 +2,9 @@ use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use csvizmo_depgraph::algorithm;
+use csvizmo_depgraph::algorithm::filter::FilterArgs;
+use csvizmo_depgraph::algorithm::select::SelectArgs;
 use csvizmo_depgraph::emit::OutputFormat;
 use csvizmo_depgraph::parse::InputFormat;
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
@@ -43,67 +46,6 @@ enum Command {
     Select(SelectArgs),
     /// Remove nodes matching patterns and optionally cascade to dependencies/ancestors
     Filter(FilterArgs),
-}
-
-#[derive(Debug, Parser)]
-struct SelectArgs {
-    /// Glob pattern to select nodes (can be repeated)
-    #[clap(short, long)]
-    pattern: Vec<String>,
-
-    /// Combine multiple patterns with AND instead of OR
-    #[clap(long)]
-    and: bool,
-
-    /// Match patterns against 'id' or 'label'
-    #[clap(long, default_value = "label")]
-    key: MatchKey,
-
-    /// Include all dependencies of selected nodes
-    #[clap(long)]
-    deps: bool,
-
-    /// Include all ancestors of selected nodes
-    #[clap(long)]
-    ancestors: bool,
-
-    /// Traverse up to N layers (implies --deps if no direction given)
-    #[clap(long)]
-    depth: Option<usize>,
-}
-
-#[derive(Debug, Parser)]
-struct FilterArgs {
-    /// Glob pattern to remove nodes (can be repeated)
-    #[clap(short, long)]
-    pattern: Vec<String>,
-
-    /// Combine multiple patterns with AND instead of OR
-    #[clap(long)]
-    and: bool,
-
-    /// Match patterns against 'id' or 'label'
-    #[clap(long, default_value = "label")]
-    key: MatchKey,
-
-    /// Also remove all dependencies of matched nodes (cascade)
-    #[clap(long)]
-    deps: bool,
-
-    /// Also remove all ancestors of matched nodes (cascade)
-    #[clap(long)]
-    ancestors: bool,
-
-    /// Preserve graph connectivity when removing nodes
-    /// (creates direct edges, no self-loops or parallel edges)
-    #[clap(long)]
-    preserve_connectivity: bool,
-}
-
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
-enum MatchKey {
-    Id,
-    Label,
 }
 
 fn main() -> eyre::Result<()> {
@@ -149,16 +91,10 @@ fn main() -> eyre::Result<()> {
         graph.subgraphs.len()
     );
 
-    match args.command {
-        Command::Select(select_args) => {
-            tracing::info!("Select operation not yet implemented");
-            tracing::debug!("Args: {select_args:?}");
-        }
-        Command::Filter(filter_args) => {
-            tracing::info!("Filter operation not yet implemented");
-            tracing::debug!("Args: {filter_args:?}");
-        }
-    }
+    let graph = match &args.command {
+        Command::Select(select_args) => algorithm::select::select(&graph, select_args)?,
+        Command::Filter(filter_args) => algorithm::filter::filter(&graph, filter_args)?,
+    };
 
     let mut output = get_output_writer(&output_path)?;
     csvizmo_depgraph::emit::emit(output_format, &graph, &mut output)?;
