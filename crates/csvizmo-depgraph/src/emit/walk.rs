@@ -59,7 +59,7 @@ pub fn walk(graph: &DepGraph, visitor: &mut dyn TreeVisitor) -> eyre::Result<()>
     let roots: Vec<&str> = data
         .nodes
         .keys()
-        .copied()
+        .map(String::as_str)
         .filter(|n| !targets.contains(n))
         .collect();
 
@@ -83,8 +83,8 @@ pub fn walk(graph: &DepGraph, visitor: &mut dyn TreeVisitor) -> eyre::Result<()>
 }
 
 struct GraphData<'a> {
-    nodes: IndexMap<&'a str, &'a NodeInfo>,
-    adj: IndexMap<&'a str, Vec<&'a str>>,
+    nodes: &'a IndexMap<String, NodeInfo>,
+    adj: &'a IndexMap<String, Vec<String>>,
     default_info: NodeInfo,
 }
 
@@ -97,7 +97,7 @@ fn dfs<'a>(
     in_progress: &mut HashSet<&'a str>,
     visitor: &mut dyn TreeVisitor,
 ) -> eyre::Result<()> {
-    let info = data.nodes.get(node).copied().unwrap_or(&data.default_info);
+    let info = data.nodes.get(node).unwrap_or(&data.default_info);
     let children = data.adj.get(node);
     let child_count = children.map_or(0, |c| c.len());
 
@@ -143,7 +143,7 @@ fn dfs<'a>(
         let len = children.len();
         for (i, child) in children.iter().enumerate() {
             dfs(
-                child,
+                child.as_str(),
                 depth + 1,
                 i == len - 1,
                 data,

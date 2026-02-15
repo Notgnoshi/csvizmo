@@ -12,7 +12,7 @@ use crate::DepGraph;
 /// - Graph-level attrs
 /// - Nodes with no outgoing edges (they appear implicitly as dependencies)
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
-    for (target, deps) in &graph.adjacency_list() {
+    for (target, deps) in graph.adjacency_list() {
         write!(writer, "{target}:")?;
         for dep in deps {
             write!(writer, " {dep}")?;

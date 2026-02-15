@@ -9,7 +9,7 @@ use crate::DepGraph;
 /// (TGF has no syntax for them).
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     for (id, info) in graph.all_nodes() {
-        if info.label != id {
+        if info.label != *id {
             writeln!(writer, "{id}\t{}", info.label)?;
         } else {
             writeln!(writer, "{id}")?;

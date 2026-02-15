@@ -1,10 +1,11 @@
+use std::cell::OnceCell;
 use std::collections::{HashSet, VecDeque};
 
 use indexmap::IndexMap;
 use petgraph::Direction;
 use petgraph::graph::{DiGraph, NodeIndex};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct DepGraph {
     /// Graph or subgraph identifier (e.g. DOT `digraph <id>` / `subgraph <id>`).
     pub id: Option<String>,
@@ -14,23 +15,32 @@ pub struct DepGraph {
     pub edges: Vec<Edge>,
     /// Nested subgraphs, each owning its own nodes and edges.
     pub subgraphs: Vec<DepGraph>,
+
+    /// Cached flattened nodes from [`Self::all_nodes`]. Lazily populated on first access.
+    pub(crate) all_nodes_cache: OnceCell<IndexMap<String, NodeInfo>>,
+    /// Cached flattened edges from [`Self::all_edges`]. Lazily populated on first access.
+    pub(crate) all_edges_cache: OnceCell<Vec<Edge>>,
+    /// Cached adjacency list from [`Self::adjacency_list`]. Lazily populated on first access.
+    pub(crate) adjacency_cache: OnceCell<IndexMap<String, Vec<String>>>,
 }
 
 impl DepGraph {
     /// Collect all nodes from this graph and all nested subgraphs.
     ///
-    /// This function recurses over subgraphs to aggregate the results. If you're doing repeated
-    /// lookups, consider caching the results.
-    pub fn all_nodes(&self) -> IndexMap<&str, &NodeInfo> {
-        let mut result = IndexMap::new();
-        // Recurse over the subgraphs in DFS order to collect nodes from each
-        self.collect_nodes(&mut result);
-        result
+    /// The result is cached internally using interior mutability. The first call recurses over
+    /// subgraphs in DFS order and clones all node data into an owned map; subsequent calls
+    /// return a reference to the cached result.
+    pub fn all_nodes(&self) -> &IndexMap<String, NodeInfo> {
+        self.all_nodes_cache.get_or_init(|| {
+            let mut result = IndexMap::new();
+            self.collect_nodes(&mut result);
+            result
+        })
     }
 
-    fn collect_nodes<'a>(&'a self, result: &mut IndexMap<&'a str, &'a NodeInfo>) {
+    fn collect_nodes(&self, result: &mut IndexMap<String, NodeInfo>) {
         for (id, info) in &self.nodes {
-            result.insert(id.as_str(), info);
+            result.insert(id.clone(), info.clone());
         }
         for sg in &self.subgraphs {
             sg.collect_nodes(result);
@@ -39,34 +49,52 @@ impl DepGraph {
 
     /// Collect all edges from this graph and all nested subgraphs.
     ///
-    /// This function recurses over subgraphs to aggregate the results. If you're doing repeated
-    /// lookups, consider caching the results.
-    pub fn all_edges(&self) -> Vec<&Edge> {
-        let mut result = Vec::new();
-        // Recurse over the subgraphs in DFS order to collect edges from each
-        self.collect_edges(&mut result);
-        result
+    /// The result is cached internally using interior mutability. The first call recurses over
+    /// subgraphs in DFS order and clones all edge data into an owned vec; subsequent calls
+    /// return a reference to the cached result.
+    pub fn all_edges(&self) -> &Vec<Edge> {
+        self.all_edges_cache.get_or_init(|| {
+            let mut result = Vec::new();
+            self.collect_edges(&mut result);
+            result
+        })
     }
 
-    fn collect_edges<'a>(&'a self, result: &mut Vec<&'a Edge>) {
-        result.extend(&self.edges);
+    fn collect_edges(&self, result: &mut Vec<Edge>) {
+        result.extend(self.edges.iter().cloned());
         for sg in &self.subgraphs {
             sg.collect_edges(result);
         }
     }
 
+    /// Clear all internal caches on this graph and its subgraphs.
+    ///
+    /// Call this after mutating nodes, edges, or subgraphs so that subsequent calls to
+    /// [`Self::all_nodes`], [`Self::all_edges`], or [`Self::adjacency_list`] recompute.
+    pub(crate) fn clear_caches(&mut self) {
+        self.all_nodes_cache.take();
+        self.all_edges_cache.take();
+        self.adjacency_cache.take();
+        for sg in &mut self.subgraphs {
+            sg.clear_caches();
+        }
+    }
+
     /// Build an adjacency list from all edges across all subgraphs.
     ///
-    /// This function recurses over subgraphs to aggregate the results. If you're doing repeated
-    /// lookups, consider caching the results.
-    pub fn adjacency_list(&self) -> IndexMap<&str, Vec<&str>> {
-        let mut adj = IndexMap::new();
-        for edge in self.all_edges() {
-            adj.entry(edge.from.as_str())
-                .or_insert_with(Vec::new)
-                .push(edge.to.as_str());
-        }
-        adj
+    /// The result is cached internally using interior mutability. The first call builds the
+    /// adjacency map from [`Self::all_edges`]; subsequent calls return a reference to the
+    /// cached result.
+    pub fn adjacency_list(&self) -> &IndexMap<String, Vec<String>> {
+        self.adjacency_cache.get_or_init(|| {
+            let mut adj = IndexMap::new();
+            for edge in self.all_edges() {
+                adj.entry(edge.from.clone())
+                    .or_insert_with(Vec::new)
+                    .push(edge.to.clone());
+            }
+            adj
+        })
     }
 }
 
@@ -133,11 +161,11 @@ impl<'a> FlatGraphView<'a> {
 
         for id in all_nodes.keys() {
             let idx = pg.add_node(());
-            id_to_idx.insert(*id, idx);
-            idx_to_id.push(*id);
+            id_to_idx.insert(id.as_str(), idx);
+            idx_to_id.push(id.as_str());
         }
 
-        for edge in &all_edges {
+        for edge in all_edges {
             let from = id_to_idx.get(edge.from.as_str());
             let to = id_to_idx.get(edge.to.as_str());
             if let (Some(&from_idx), Some(&to_idx)) = (from, to) {
@@ -231,6 +259,7 @@ fn filter_depgraph(graph: &DepGraph, keep: &HashSet<&str>) -> DepGraph {
             .map(|sg| filter_depgraph(sg, keep))
             .filter(|sg| !sg.nodes.is_empty() || !sg.subgraphs.is_empty())
             .collect(),
+        ..Default::default()
     }
 }
 
@@ -244,8 +273,6 @@ mod tests {
         subgraphs: Vec<DepGraph>,
     ) -> DepGraph {
         DepGraph {
-            id: None,
-            attrs: IndexMap::new(),
             nodes: nodes
                 .iter()
                 .map(|(id, label)| (id.to_string(), NodeInfo::new(*label)))
@@ -259,6 +286,7 @@ mod tests {
                 })
                 .collect(),
             subgraphs,
+            ..Default::default()
         }
     }
 

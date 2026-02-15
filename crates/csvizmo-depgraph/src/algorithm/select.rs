@@ -76,7 +76,7 @@ pub fn select(graph: &DepGraph, args: &SelectArgs) -> eyre::Result<DepGraph> {
         let mut matched = HashSet::new();
         for (id, info) in graph.all_nodes() {
             let text = match args.key {
-                MatchKey::Id => id,
+                MatchKey::Id => id.as_str(),
                 MatchKey::Label => info.label.as_str(),
             };
 
@@ -86,7 +86,7 @@ pub fn select(graph: &DepGraph, args: &SelectArgs) -> eyre::Result<DepGraph> {
                 globset.is_match(text)
             };
 
-            if is_match && let Some(&idx) = view.id_to_idx.get(id) {
+            if is_match && let Some(&idx) = view.id_to_idx.get(id.as_str()) {
                 matched.insert(idx);
             }
         }

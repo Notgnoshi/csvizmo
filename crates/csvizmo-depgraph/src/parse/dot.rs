@@ -103,11 +103,11 @@ fn remove_implicit_duplicates(dep: &mut DepGraph) {
     if dep.subgraphs.is_empty() {
         return;
     }
-    let subgraph_nodes = dep
+    let subgraph_nodes: indexmap::IndexMap<&str, &NodeInfo> = dep
         .subgraphs
         .iter()
-        .flat_map(|sg| sg.all_nodes())
-        .collect::<indexmap::IndexMap<&str, _>>();
+        .flat_map(|sg| sg.all_nodes().iter().map(|(k, v)| (k.as_str(), v)))
+        .collect();
     dep.nodes.retain(|id, info| {
         let is_implicit = info.label == *id && info.attrs.is_empty();
         !(is_implicit && subgraph_nodes.contains_key(id.as_str()))
@@ -891,9 +891,9 @@ mod tests {
         )
         .unwrap();
         let adj = graph.adjacency_list();
-        assert_eq!(adj.get("a").map(|v| v.as_slice()), Some(["b"].as_slice()));
-        assert_eq!(adj.get("b").map(|v| v.as_slice()), Some(["c"].as_slice()));
-        assert_eq!(adj.get("c").map(|v| v.as_slice()), Some(["d"].as_slice()));
+        assert_eq!(adj["a"], ["b"]);
+        assert_eq!(adj["b"], ["c"]);
+        assert_eq!(adj["c"], ["d"]);
     }
 
     #[test]

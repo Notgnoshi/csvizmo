@@ -75,7 +75,7 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
     let mut matched = HashSet::new();
     for (id, info) in graph.all_nodes() {
         let text = match args.key {
-            MatchKey::Id => id,
+            MatchKey::Id => id.as_str(),
             MatchKey::Label => info.label.as_str(),
         };
 
@@ -85,7 +85,7 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
             globset.is_match(text)
         };
 
-        if is_match && let Some(&idx) = view.id_to_idx.get(id) {
+        if is_match && let Some(&idx) = view.id_to_idx.get(id.as_str()) {
             matched.insert(idx);
         }
     }
@@ -135,6 +135,10 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
         for (from, to) in bypass_edges {
             insert_edge(&mut result, &from, &to);
         }
+
+        // Bypass edges were inserted directly into the graph fields, so any
+        // caches populated earlier (e.g. by the `existing` set above) are stale.
+        result.clear_caches();
     }
 
     Ok(result)
@@ -144,7 +148,6 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
 /// Falls back to the root graph if the endpoints are in different subgraphs.
 fn insert_edge(graph: &mut DepGraph, from: &str, to: &str) {
     for sg in &mut graph.subgraphs {
-        // TODO: This is inefficient since each call scans all nodes and builds a new copy.
         let has_from = sg.all_nodes().contains_key(from);
         let has_to = sg.all_nodes().contains_key(to);
         if has_from && has_to {
