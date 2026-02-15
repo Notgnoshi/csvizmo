@@ -263,8 +263,8 @@ digraph {
 
 > [!NOTE]
 >
-> The `depfilter` tool shares the same GPL-2.0 license caveat as `depconv` with respect to
-> DOT parsing.
+> The `depfilter` tool shares the same GPL-2.0 license caveat as `depconv` with respect to DOT
+> parsing.
 
 ## can2csv
 
