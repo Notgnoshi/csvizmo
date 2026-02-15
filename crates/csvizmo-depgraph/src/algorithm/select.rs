@@ -94,16 +94,15 @@ pub fn select(graph: &DepGraph, args: &SelectArgs) -> eyre::Result<DepGraph> {
     };
 
     // --depth without an explicit direction implies --deps
-    let direction = if args.ancestors {
-        Some(Direction::Incoming)
-    } else if args.deps || args.depth.is_some() {
-        Some(Direction::Outgoing)
-    } else {
-        None
-    };
-
-    if let Some(dir) = direction {
-        keep = view.bfs(keep, dir, args.depth);
+    let deps = args.deps || args.depth.is_some();
+    if deps && args.ancestors {
+        let seeds = keep.clone();
+        keep = view.bfs(seeds.clone(), Direction::Outgoing, args.depth);
+        keep.extend(view.bfs(seeds, Direction::Incoming, args.depth));
+    } else if args.ancestors {
+        keep = view.bfs(keep, Direction::Incoming, args.depth);
+    } else if deps {
+        keep = view.bfs(keep, Direction::Outgoing, args.depth);
     }
 
     Ok(view.filter(&keep))
@@ -259,6 +258,39 @@ mod tests {
         let result = select(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["a", "b"]);
         assert_eq!(edge_pairs(&result), vec![("a", "b")]);
+    }
+
+    #[test]
+    fn with_deps_and_ancestors() {
+        // a -> b -> c -> d: select b with both deps and ancestors
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
+            &[("a", "b"), ("b", "c"), ("c", "d")],
+        );
+        let args = SelectArgs::default().pattern("b").deps().ancestors();
+        let result = select(&g, &args).unwrap();
+        assert_eq!(node_ids(&result), vec!["a", "b", "c", "d"]);
+        assert_eq!(
+            edge_pairs(&result),
+            vec![("a", "b"), ("b", "c"), ("c", "d")]
+        );
+    }
+
+    #[test]
+    fn with_deps_and_ancestors_depth_limited() {
+        // a -> b -> c -> d -> e: select c with both directions, depth 1
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d"), ("e", "e")],
+            &[("a", "b"), ("b", "c"), ("c", "d"), ("d", "e")],
+        );
+        let args = SelectArgs::default()
+            .pattern("c")
+            .deps()
+            .ancestors()
+            .depth(1);
+        let result = select(&g, &args).unwrap();
+        assert_eq!(node_ids(&result), vec!["b", "c", "d"]);
+        assert_eq!(edge_pairs(&result), vec![("b", "c"), ("c", "d")]);
     }
 
     #[test]

@@ -91,16 +91,14 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
     }
 
     // Cascade removal via BFS if --deps or --ancestors is set.
-    let direction = if args.ancestors {
-        Some(Direction::Incoming)
+    if args.deps && args.ancestors {
+        let seeds = matched.clone();
+        matched = view.bfs(seeds.clone(), Direction::Outgoing, None);
+        matched.extend(view.bfs(seeds, Direction::Incoming, None));
+    } else if args.ancestors {
+        matched = view.bfs(matched, Direction::Incoming, None);
     } else if args.deps {
-        Some(Direction::Outgoing)
-    } else {
-        None
-    };
-
-    if let Some(dir) = direction {
-        matched = view.bfs(matched, dir, None);
+        matched = view.bfs(matched, Direction::Outgoing, None);
     }
 
     // Keep set = all nodes minus matched nodes.
@@ -292,6 +290,33 @@ mod tests {
         let args = FilterArgs::default().pattern("c").ancestors();
         let result = filter(&g, &args).unwrap();
         assert!(node_ids(&result).is_empty());
+    }
+
+    #[test]
+    fn with_deps_and_ancestors_cascade() {
+        // a -> b -> c -> d: filter b with both deps and ancestors
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
+            &[("a", "b"), ("b", "c"), ("c", "d")],
+        );
+        let args = FilterArgs::default().pattern("b").deps().ancestors();
+        let result = filter(&g, &args).unwrap();
+        // b + ancestors (a) + deps (c, d) = all removed
+        assert!(node_ids(&result).is_empty());
+    }
+
+    #[test]
+    fn with_deps_and_ancestors_cascade_partial() {
+        // a -> b -> c, d -> c: filter b with both directions
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
+            &[("a", "b"), ("b", "c"), ("d", "c")],
+        );
+        let args = FilterArgs::default().pattern("b").deps().ancestors();
+        let result = filter(&g, &args).unwrap();
+        // b removed, ancestors (a) removed, deps (c) removed, but d survives
+        assert_eq!(node_ids(&result), vec!["d"]);
+        assert!(edge_pairs(&result).is_empty());
     }
 
     // -- preserve connectivity --

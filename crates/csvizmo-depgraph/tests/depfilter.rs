@@ -168,6 +168,30 @@ fn select_multiple_patterns_and() {
     assert_eq!(stdout, "libfoo-alpha\n#\n");
 }
 
+#[test]
+fn select_with_deps_and_ancestors() {
+    // a -> b -> c -> d: select b with both directions gets everything
+    let graph = "a\nb\nc\nd\n#\na\tb\nb\tc\nc\td\n";
+    let output = tool!("depfilter")
+        .args([
+            "select",
+            "--pattern",
+            "b",
+            "--deps",
+            "--ancestors",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nc\nd\n#\na\tb\nb\tc\nc\td\n");
+}
+
 // -- filter integration tests: one per CLI flag --
 
 #[test]
@@ -254,6 +278,30 @@ fn filter_with_ancestors() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, "#\n");
+}
+
+#[test]
+fn filter_with_deps_and_ancestors() {
+    // a -> b -> c, d -> c: filter b with both directions removes a, b, c but keeps d
+    let graph = "a\nb\nc\nd\n#\na\tb\nb\tc\nd\tc\n";
+    let output = tool!("depfilter")
+        .args([
+            "filter",
+            "--pattern",
+            "b",
+            "--deps",
+            "--ancestors",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "d\n#\n");
 }
 
 #[test]
