@@ -356,6 +356,50 @@ digraph {
 }
 
 #[test]
+fn filter_preserve_connectivity_subgraph() {
+    // subgraph { a -> b -> c }: remove b, bypass a -> c stays in subgraph
+    let dot_input = "\
+digraph {
+    subgraph cluster_0 {
+        a;
+        b;
+        c;
+        a -> b;
+        b -> c;
+    }
+}
+";
+    let output = tool!("depfilter")
+        .args([
+            "filter",
+            "--pattern",
+            "b",
+            "--preserve-connectivity",
+            "--input-format",
+            "dot",
+            "--output-format",
+            "dot",
+        ])
+        .write_stdin(dot_input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_0 {
+        a;
+        c;
+        a -> c;
+    }
+}
+"
+    );
+}
+
+#[test]
 fn filter_dot_input() {
     let dot_input = "\
 digraph {

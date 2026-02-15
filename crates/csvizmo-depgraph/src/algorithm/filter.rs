@@ -111,11 +111,12 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
     // BFS through chains of removed nodes so that A->B->C->D with B,C removed produces A->D.
     if args.preserve_connectivity {
         let mut existing: HashSet<(String, String)> = result
-            .edges
+            .all_edges()
             .iter()
             .map(|e| (e.from.clone(), e.to.clone()))
             .collect();
 
+        let mut bypass_edges: Vec<(String, String)> = Vec::new();
         for &idx in &matched {
             let preds = surviving_neighbors(&view.pg, idx, Direction::Incoming, &keep);
             let succs = surviving_neighbors(&view.pg, idx, Direction::Outgoing, &keep);
@@ -125,18 +126,36 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
                 for &succ in &succs {
                     let to = view.idx_to_id[succ.index()];
                     if from != to && existing.insert((from.to_string(), to.to_string())) {
-                        result.edges.push(Edge {
-                            from: from.to_string(),
-                            to: to.to_string(),
-                            ..Default::default()
-                        });
+                        bypass_edges.push((from.to_string(), to.to_string()));
                     }
                 }
             }
         }
+
+        for (from, to) in bypass_edges {
+            insert_edge(&mut result, &from, &to);
+        }
     }
 
     Ok(result)
+}
+
+/// Insert a bypass edge into the deepest subgraph that contains both endpoints.
+/// Falls back to the root graph if the endpoints are in different subgraphs.
+fn insert_edge(graph: &mut DepGraph, from: &str, to: &str) {
+    for sg in &mut graph.subgraphs {
+        // TODO: This is inefficient since each call scans all nodes and builds a new copy.
+        let has_from = sg.all_nodes().contains_key(from);
+        let has_to = sg.all_nodes().contains_key(to);
+        if has_from && has_to {
+            return insert_edge(sg, from, to);
+        }
+    }
+    graph.edges.push(Edge {
+        from: from.to_string(),
+        to: to.to_string(),
+        ..Default::default()
+    });
 }
 
 /// BFS from `start` in `direction`, traversing through removed nodes (those not in `keep`),
@@ -172,9 +191,13 @@ fn surviving_neighbors(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Edge, NodeInfo};
+    use crate::{DepGraph, Edge, NodeInfo};
 
-    fn make_graph(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> DepGraph {
+    fn make_graph(
+        nodes: &[(&str, &str)],
+        edges: &[(&str, &str)],
+        subgraphs: Vec<DepGraph>,
+    ) -> DepGraph {
         DepGraph {
             nodes: nodes
                 .iter()
@@ -188,6 +211,7 @@ mod tests {
                     ..Default::default()
                 })
                 .collect(),
+            subgraphs,
             ..Default::default()
         }
     }
@@ -220,6 +244,7 @@ mod tests {
                 ("myapp", "libbar"),
                 ("libfoo", "libbar"),
             ],
+            vec![],
         );
         let args = FilterArgs::default().pattern("libfoo");
         let result = filter(&g, &args).unwrap();
@@ -232,6 +257,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c")],
+            vec![],
         );
         let args = FilterArgs::default().pattern("a").pattern("b");
         let result = filter(&g, &args).unwrap();
@@ -248,6 +274,7 @@ mod tests {
                 ("libbar-alpha", "libbar-alpha"),
             ],
             &[],
+            vec![],
         );
         let args = FilterArgs::default()
             .pattern("libfoo*")
@@ -259,7 +286,7 @@ mod tests {
 
     #[test]
     fn no_match_returns_unchanged() {
-        let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b")]);
+        let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b")], vec![]);
         let args = FilterArgs::default().pattern("nonexistent");
         let result = filter(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["a", "b"]);
@@ -274,6 +301,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c"), ("a", "c")],
+            vec![],
         );
         let args = FilterArgs::default().pattern("a").deps();
         let result = filter(&g, &args).unwrap();
@@ -286,6 +314,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c")],
+            vec![],
         );
         let args = FilterArgs::default().pattern("c").ancestors();
         let result = filter(&g, &args).unwrap();
@@ -298,6 +327,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("c", "d")],
+            vec![],
         );
         let args = FilterArgs::default().pattern("b").deps().ancestors();
         let result = filter(&g, &args).unwrap();
@@ -311,6 +341,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("d", "c")],
+            vec![],
         );
         let args = FilterArgs::default().pattern("b").deps().ancestors();
         let result = filter(&g, &args).unwrap();
@@ -327,6 +358,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c")],
+            vec![],
         );
         let args = FilterArgs::default().pattern("b").preserve_connectivity();
         let result = filter(&g, &args).unwrap();
@@ -340,6 +372,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("c", "d")],
+            vec![],
         );
         let args = FilterArgs::default()
             .pattern("b")
@@ -356,6 +389,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")],
+            vec![],
         );
         let args = FilterArgs::default()
             .pattern("b")
@@ -369,7 +403,7 @@ mod tests {
     #[test]
     fn preserve_connectivity_no_self_loops() {
         // a -> b -> a: remove b, should not create a -> a
-        let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b"), ("b", "a")]);
+        let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b"), ("b", "a")], vec![]);
         let args = FilterArgs::default().pattern("b").preserve_connectivity();
         let result = filter(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["a"]);
@@ -382,10 +416,75 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c"), ("a", "c")],
+            vec![],
         );
         let args = FilterArgs::default().pattern("b").preserve_connectivity();
         let result = filter(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["a", "c"]);
         assert_eq!(edge_pairs(&result), vec![("a", "c")]);
+    }
+
+    // -- preserve connectivity with subgraphs --
+
+    #[test]
+    fn preserve_connectivity_bypass_in_subgraph() {
+        // subgraph { a -> b -> c }: remove b, bypass a -> c should be in the subgraph
+        let g = make_graph(
+            &[],
+            &[],
+            vec![make_graph(
+                &[("a", "a"), ("b", "b"), ("c", "c")],
+                &[("a", "b"), ("b", "c")],
+                vec![],
+            )],
+        );
+        let args = FilterArgs::default().pattern("b").preserve_connectivity();
+        let result = filter(&g, &args).unwrap();
+        // bypass a -> c should be inside the subgraph, not at root
+        assert!(result.edges.is_empty());
+        assert_eq!(result.subgraphs.len(), 1);
+        let sg = &result.subgraphs[0];
+        assert_eq!(node_ids(sg), vec!["a", "c"]);
+        assert_eq!(edge_pairs(sg), vec![("a", "c")]);
+    }
+
+    #[test]
+    fn preserve_connectivity_no_parallel_edges_in_subgraph() {
+        // subgraph { a -> b -> c, a -> c }: remove b, should not duplicate a -> c
+        let g = make_graph(
+            &[],
+            &[],
+            vec![make_graph(
+                &[("a", "a"), ("b", "b"), ("c", "c")],
+                &[("a", "b"), ("b", "c"), ("a", "c")],
+                vec![],
+            )],
+        );
+        let args = FilterArgs::default().pattern("b").preserve_connectivity();
+        let result = filter(&g, &args).unwrap();
+        assert!(result.edges.is_empty());
+        assert_eq!(result.subgraphs.len(), 1);
+        let sg = &result.subgraphs[0];
+        assert_eq!(node_ids(sg), vec!["a", "c"]);
+        assert_eq!(edge_pairs(sg), vec![("a", "c")]);
+    }
+
+    #[test]
+    fn preserve_connectivity_cross_subgraph_bypass_at_root() {
+        // subgraph1 { a }, subgraph2 { c }, root: b, edges a->b, b->c at root
+        // remove b, bypass a->c should be at root
+        let g = make_graph(
+            &[("b", "b")],
+            &[("a", "b"), ("b", "c")],
+            vec![
+                make_graph(&[("a", "a")], &[], vec![]),
+                make_graph(&[("c", "c")], &[], vec![]),
+            ],
+        );
+        let args = FilterArgs::default().pattern("b").preserve_connectivity();
+        let result = filter(&g, &args).unwrap();
+        assert!(result.nodes.is_empty());
+        assert_eq!(edge_pairs(&result), vec![("a", "c")]);
+        assert_eq!(result.subgraphs.len(), 2);
     }
 }
