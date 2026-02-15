@@ -47,10 +47,7 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
                 .ok_or_else(|| eyre::eyre!("invalid node line: {line:?}"))?;
             graph.nodes.insert(
                 id.to_string(),
-                NodeInfo {
-                    label: join_rest(&mut parts),
-                    ..Default::default()
-                },
+                NodeInfo::new(join_rest(&mut parts).unwrap_or_else(|| id.to_string())),
             );
         }
     }
@@ -80,16 +77,16 @@ mod tests {
     fn nodes_with_labels() {
         let graph = parse("1 libfoo\n2 libbar\n#\n").unwrap();
         assert_eq!(graph.nodes.len(), 2);
-        assert_eq!(graph.nodes["1"].label.as_deref(), Some("libfoo"));
-        assert_eq!(graph.nodes["2"].label.as_deref(), Some("libbar"));
+        assert_eq!(graph.nodes["1"].label.as_str(), "libfoo");
+        assert_eq!(graph.nodes["2"].label.as_str(), "libbar");
     }
 
     #[test]
     fn nodes_without_labels() {
         let graph = parse("a\nb\n#\n").unwrap();
         assert_eq!(graph.nodes.len(), 2);
-        assert_eq!(graph.nodes["a"].label, None);
-        assert_eq!(graph.nodes["b"].label, None);
+        assert_eq!(graph.nodes["a"].label, "a");
+        assert_eq!(graph.nodes["b"].label, "b");
     }
 
     #[test]
@@ -113,15 +110,15 @@ mod tests {
     #[test]
     fn tab_separated() {
         let graph = parse("1\tlibfoo\n2\tlibbar\n#\n1\t2\tdepends on\n").unwrap();
-        assert_eq!(graph.nodes["1"].label.as_deref(), Some("libfoo"));
+        assert_eq!(graph.nodes["1"].label.as_str(), "libfoo");
         assert_eq!(graph.edges[0].label.as_deref(), Some("depends on"));
     }
 
     #[test]
     fn multiple_whitespace() {
         let graph = parse("1  libfoo\n2\t\tlibbar\n#\n1  2\n").unwrap();
-        assert_eq!(graph.nodes["1"].label.as_deref(), Some("libfoo"));
-        assert_eq!(graph.nodes["2"].label.as_deref(), Some("libbar"));
+        assert_eq!(graph.nodes["1"].label.as_str(), "libfoo");
+        assert_eq!(graph.nodes["2"].label.as_str(), "libbar");
         assert_eq!(graph.edges[0].from, "1");
         assert_eq!(graph.edges[0].to, "2");
     }
@@ -151,9 +148,9 @@ mod tests {
         let input = include_str!("../../../../data/depconv/small.tgf");
         let graph = parse(input).unwrap();
         assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.nodes["1"].label.as_deref(), Some("libfoo"));
-        assert_eq!(graph.nodes["2"].label.as_deref(), Some("libbar"));
-        assert_eq!(graph.nodes["3"].label.as_deref(), Some("myapp"));
+        assert_eq!(graph.nodes["1"].label.as_str(), "libfoo");
+        assert_eq!(graph.nodes["2"].label.as_str(), "libbar");
+        assert_eq!(graph.nodes["3"].label.as_str(), "myapp");
         assert_eq!(graph.edges.len(), 3);
         assert_eq!(graph.edges[0].from, "3");
         assert_eq!(graph.edges[0].to, "1");
@@ -165,9 +162,9 @@ mod tests {
         let input = include_str!("../../../../data/depconv/nodes-only.tgf");
         let graph = parse(input).unwrap();
         assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.nodes["a"].label.as_deref(), Some("alpha"));
-        assert_eq!(graph.nodes["b"].label.as_deref(), Some("bravo"));
-        assert_eq!(graph.nodes["c"].label.as_deref(), Some("charlie"));
+        assert_eq!(graph.nodes["a"].label.as_str(), "alpha");
+        assert_eq!(graph.nodes["b"].label.as_str(), "bravo");
+        assert_eq!(graph.nodes["c"].label.as_str(), "charlie");
         assert!(graph.edges.is_empty());
     }
 
@@ -176,7 +173,7 @@ mod tests {
         let input = include_str!("../../../../data/depconv/edge-labels.tgf");
         let graph = parse(input).unwrap();
         assert_eq!(graph.nodes.len(), 4);
-        assert_eq!(graph.nodes["fmt"].label.as_deref(), Some("csvizmo-fmt"));
+        assert_eq!(graph.nodes["fmt"].label.as_str(), "csvizmo-fmt");
         assert_eq!(graph.edges.len(), 4);
         assert_eq!(graph.edges[0].from, "depgraph");
         assert_eq!(graph.edges[0].to, "utils");

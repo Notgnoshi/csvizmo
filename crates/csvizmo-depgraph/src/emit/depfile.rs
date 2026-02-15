@@ -12,7 +12,7 @@ use crate::DepGraph;
 /// - Graph-level attrs
 /// - Nodes with no outgoing edges (they appear implicitly as dependencies)
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
-    for (target, deps) in &graph.adjacency_list() {
+    for (target, deps) in graph.adjacency_list() {
         write!(writer, "{target}:")?;
         for dep in deps {
             write!(writer, " {dep}")?;
@@ -98,10 +98,9 @@ mod tests {
     fn nodes_only_produces_empty() {
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("x".into(), NodeInfo::default()),
-                ("y".into(), NodeInfo::default()),
+                ("x".into(), NodeInfo::new("x")),
+                ("y".into(), NodeInfo::new("y")),
             ]),
-            edges: vec![],
             ..Default::default()
         };
         assert_eq!(emit_to_string(&graph), "");
@@ -114,9 +113,9 @@ mod tests {
             nodes: IndexMap::from([(
                 "a".into(),
                 NodeInfo {
-                    label: Some("Alpha".into()),
+                    label: "Alpha".into(),
+                    node_type: None,
                     attrs: IndexMap::from([("shape".into(), "box".into())]),
-                    ..Default::default()
                 },
             )]),
             edges: vec![Edge {

@@ -18,7 +18,9 @@ pub enum VisitStatus {
 /// Context passed to a [`TreeVisitor`] at each visited node.
 pub struct VisitContext<'a> {
     /// Node ID.
-    pub node: &'a str,
+    // the two DFS emitters only use the node label, but the ID is still available for future visitors
+    #[allow(unused)]
+    pub node_id: &'a str,
     /// Node metadata (label, attrs).
     pub info: &'a NodeInfo,
     /// Depth in the traversal tree (0 for roots).
@@ -49,7 +51,7 @@ pub fn walk(graph: &DepGraph, visitor: &mut dyn TreeVisitor) -> eyre::Result<()>
     let data = GraphData {
         nodes: graph.all_nodes(),
         adj: graph.adjacency_list(),
-        default_info: NodeInfo::default(),
+        default_info: NodeInfo::new(""),
     };
 
     // Find roots: nodes with no incoming edges.
@@ -57,7 +59,7 @@ pub fn walk(graph: &DepGraph, visitor: &mut dyn TreeVisitor) -> eyre::Result<()>
     let roots: Vec<&str> = data
         .nodes
         .keys()
-        .copied()
+        .map(String::as_str)
         .filter(|n| !targets.contains(n))
         .collect();
 
@@ -81,8 +83,8 @@ pub fn walk(graph: &DepGraph, visitor: &mut dyn TreeVisitor) -> eyre::Result<()>
 }
 
 struct GraphData<'a> {
-    nodes: IndexMap<&'a str, &'a NodeInfo>,
-    adj: IndexMap<&'a str, Vec<&'a str>>,
+    nodes: &'a IndexMap<String, NodeInfo>,
+    adj: &'a IndexMap<String, Vec<String>>,
     default_info: NodeInfo,
 }
 
@@ -95,14 +97,14 @@ fn dfs<'a>(
     in_progress: &mut HashSet<&'a str>,
     visitor: &mut dyn TreeVisitor,
 ) -> eyre::Result<()> {
-    let info = data.nodes.get(node).copied().unwrap_or(&data.default_info);
+    let info = data.nodes.get(node).unwrap_or(&data.default_info);
     let children = data.adj.get(node);
     let child_count = children.map_or(0, |c| c.len());
 
     // Cycle: node is an ancestor on the current DFS path.
     if in_progress.contains(node) {
         visitor.visit(&VisitContext {
-            node,
+            node_id: node,
             info,
             depth,
             is_last,
@@ -115,7 +117,7 @@ fn dfs<'a>(
     // Already expanded: node was fully visited from a different path.
     if visited.contains(node) {
         visitor.visit(&VisitContext {
-            node,
+            node_id: node,
             info,
             depth,
             is_last,
@@ -127,7 +129,7 @@ fn dfs<'a>(
 
     // First visit.
     visitor.visit(&VisitContext {
-        node,
+        node_id: node,
         info,
         depth,
         is_last,
@@ -141,7 +143,7 @@ fn dfs<'a>(
         let len = children.len();
         for (i, child) in children.iter().enumerate() {
             dfs(
-                child,
+                child.as_str(),
                 depth + 1,
                 i == len - 1,
                 data,
@@ -203,7 +205,7 @@ mod tests {
     impl TreeVisitor for CollectVisitor {
         fn visit(&mut self, ctx: &VisitContext) -> eyre::Result<()> {
             self.visits.push(Visit {
-                node: ctx.node.to_string(),
+                node: ctx.node_id.to_string(),
                 depth: ctx.depth,
                 is_last: ctx.is_last,
                 child_count: ctx.child_count,
@@ -223,7 +225,14 @@ mod tests {
     #[test]
     fn single_node() {
         let graph = DepGraph {
-            nodes: IndexMap::from([("a".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([(
+                "a".into(),
+                NodeInfo {
+                    label: "a".into(),
+                    node_type: None,
+                    attrs: Default::default(),
+                },
+            )]),
             ..Default::default()
         };
         let mut visitor = CollectVisitor::new();
@@ -235,9 +244,30 @@ mod tests {
     fn linear_chain() {
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
+                (
+                    "a".into(),
+                    NodeInfo {
+                        label: "a".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "b".into(),
+                    NodeInfo {
+                        label: "b".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "c".into(),
+                    NodeInfo {
+                        label: "c".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
             ]),
             edges: vec![
                 Edge {
@@ -271,10 +301,38 @@ mod tests {
         // d is expanded under b, then AlreadyExpanded under c.
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
-                ("d".into(), NodeInfo::default()),
+                (
+                    "a".into(),
+                    NodeInfo {
+                        label: "a".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "b".into(),
+                    NodeInfo {
+                        label: "b".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "c".into(),
+                    NodeInfo {
+                        label: "c".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "d".into(),
+                    NodeInfo {
+                        label: "d".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
             ]),
             edges: vec![
                 Edge {
@@ -319,8 +377,22 @@ mod tests {
         // a -> b -> a
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
+                (
+                    "a".into(),
+                    NodeInfo {
+                        label: "a".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "b".into(),
+                    NodeInfo {
+                        label: "b".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
             ]),
             edges: vec![
                 Edge {
@@ -346,7 +418,14 @@ mod tests {
     fn self_loop() {
         // a -> a
         let graph = DepGraph {
-            nodes: IndexMap::from([("a".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([(
+                "a".into(),
+                NodeInfo {
+                    label: "a".into(),
+                    node_type: None,
+                    attrs: Default::default(),
+                },
+            )]),
             edges: vec![Edge {
                 from: "a".into(),
                 to: "a".into(),
@@ -366,9 +445,30 @@ mod tests {
         // a -> b -> c -> b (c cycles back to b, a is the root)
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
+                (
+                    "a".into(),
+                    NodeInfo {
+                        label: "a".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "b".into(),
+                    NodeInfo {
+                        label: "b".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "c".into(),
+                    NodeInfo {
+                        label: "c".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
             ]),
             edges: vec![
                 Edge {
@@ -407,9 +507,30 @@ mod tests {
         // a (isolated), b -> c
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
+                (
+                    "a".into(),
+                    NodeInfo {
+                        label: "a".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "b".into(),
+                    NodeInfo {
+                        label: "b".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "c".into(),
+                    NodeInfo {
+                        label: "c".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
             ]),
             edges: vec![Edge {
                 from: "b".into(),
@@ -435,9 +556,30 @@ mod tests {
         // a -> c, b -> c (both a and b are roots, c is shared)
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
+                (
+                    "a".into(),
+                    NodeInfo {
+                        label: "a".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "b".into(),
+                    NodeInfo {
+                        label: "b".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
+                (
+                    "c".into(),
+                    NodeInfo {
+                        label: "c".into(),
+                        node_type: None,
+                        attrs: Default::default(),
+                    },
+                ),
             ]),
             edges: vec![
                 Edge {
@@ -486,7 +628,14 @@ mod tests {
     #[test]
     fn subgraph_nodes_included() {
         let graph = DepGraph {
-            nodes: IndexMap::from([("root".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([(
+                "root".into(),
+                NodeInfo {
+                    label: "root".into(),
+                    node_type: None,
+                    attrs: Default::default(),
+                },
+            )]),
             edges: vec![Edge {
                 from: "root".into(),
                 to: "sub_a".into(),
@@ -494,8 +643,22 @@ mod tests {
             }],
             subgraphs: vec![DepGraph {
                 nodes: IndexMap::from([
-                    ("sub_a".into(), NodeInfo::default()),
-                    ("sub_b".into(), NodeInfo::default()),
+                    (
+                        "sub_a".into(),
+                        NodeInfo {
+                            label: "sub_a".into(),
+                            node_type: None,
+                            attrs: Default::default(),
+                        },
+                    ),
+                    (
+                        "sub_b".into(),
+                        NodeInfo {
+                            label: "sub_b".into(),
+                            node_type: None,
+                            attrs: Default::default(),
+                        },
+                    ),
                 ]),
                 edges: vec![Edge {
                     from: "sub_a".into(),

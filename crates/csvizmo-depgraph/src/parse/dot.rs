@@ -103,13 +103,13 @@ fn remove_implicit_duplicates(dep: &mut DepGraph) {
     if dep.subgraphs.is_empty() {
         return;
     }
-    let subgraph_nodes = dep
+    let subgraph_nodes: indexmap::IndexMap<&str, &NodeInfo> = dep
         .subgraphs
         .iter()
-        .flat_map(|sg| sg.all_nodes())
-        .collect::<indexmap::IndexMap<&str, _>>();
+        .flat_map(|sg| sg.all_nodes().iter().map(|(k, v)| (k.as_str(), v)))
+        .collect();
     dep.nodes.retain(|id, info| {
-        let is_implicit = info.label.is_none() && info.attrs.is_empty();
+        let is_implicit = info.label == *id && info.attrs.is_empty();
         !(is_implicit && subgraph_nodes.contains_key(id.as_str()))
     });
 }
@@ -177,7 +177,7 @@ fn shape_to_node_type(shape: &str) -> Option<&'static str> {
 /// Add a node from a NodeStmt into the DepGraph, returning the unquoted node ID.
 fn add_node(node_stmt: &ast::NodeStmt<(ast::ID, ast::ID)>, dep: &mut DepGraph) -> String {
     let id = unquote(&node_stmt.node.id);
-    let mut info = NodeInfo::default();
+    let mut info = NodeInfo::new(id.clone());
     let mut explicit_type = None;
     let mut shape_value = None;
     let mut style_value = None;
@@ -189,10 +189,10 @@ fn add_node(node_stmt: &ast::NodeStmt<(ast::ID, ast::ID)>, dep: &mut DepGraph) -
                 let value = unquote(&id_to_string(v));
                 match key.as_str() {
                     "label" => {
-                        info.label = Some(value);
+                        info.label = value;
                     }
                     "type" => {
-                        explicit_type = Some(crate::normalize_node_type(&value));
+                        explicit_type = Some(super::normalize_node_type(&value));
                     }
                     "shape" => {
                         shape_value = Some(value.clone());
@@ -268,8 +268,12 @@ fn add_edges(edge_stmt: &AstEdgeStmt, dep: &mut DepGraph) {
         for from_id in &from_ids {
             for to_id in &to_ids {
                 // Ensure implicit nodes exist.
-                dep.nodes.entry(from_id.clone()).or_default();
-                dep.nodes.entry(to_id.clone()).or_default();
+                dep.nodes
+                    .entry(from_id.clone())
+                    .or_insert_with(|| NodeInfo::new(from_id.clone()));
+                dep.nodes
+                    .entry(to_id.clone())
+                    .or_insert_with(|| NodeInfo::new(to_id.clone()));
                 dep.edges.push(Edge {
                     from: from_id.clone(),
                     to: to_id.clone(),
@@ -466,8 +470,8 @@ mod tests {
     #[test]
     fn node_labels() {
         let graph = parse(r#"digraph { a [label="Alpha"]; b [label="Bravo"]; a -> b; }"#).unwrap();
-        assert_eq!(graph.nodes["a"].label.as_deref(), Some("Alpha"));
-        assert_eq!(graph.nodes["b"].label.as_deref(), Some("Bravo"));
+        assert_eq!(graph.nodes["a"].label.as_str(), "Alpha");
+        assert_eq!(graph.nodes["b"].label.as_str(), "Bravo");
     }
 
     #[test]
@@ -514,7 +518,7 @@ mod tests {
     #[test]
     fn extra_attrs_preserved() {
         let graph = parse(r#"digraph { a [label="A", color="red", style="bold"]; }"#).unwrap();
-        assert_eq!(graph.nodes["a"].label.as_deref(), Some("A"));
+        assert_eq!(graph.nodes["a"].label.as_str(), "A");
         assert_eq!(
             graph.nodes["a"].attrs.get("color").map(|s| s.as_str()),
             Some("red")
@@ -553,7 +557,7 @@ mod tests {
         let graph =
             parse(r#"digraph { "my node" [label="My Node"]; "my node" -> "other"; }"#).unwrap();
         assert!(graph.nodes.contains_key("my node"));
-        assert_eq!(graph.nodes["my node"].label.as_deref(), Some("My Node"));
+        assert_eq!(graph.nodes["my node"].label.as_str(), "My Node");
     }
 
     #[test]
@@ -586,7 +590,7 @@ mod tests {
         // attribute values but preserves \" escape sequences. Our unquote
         // must decode them so they don't get double-escaped by quote().
         let graph = parse(r#"digraph { a [label="say \"hi\""]; }"#).unwrap();
-        assert_eq!(graph.nodes["a"].label.as_deref(), Some(r#"say "hi""#));
+        assert_eq!(graph.nodes["a"].label.as_str(), r#"say "hi""#);
     }
 
     #[test]
@@ -600,7 +604,7 @@ mod tests {
         assert_eq!(output, "digraph {\n    a [label=\"say \\\"hi\\\"\"];\n}\n");
         // And parse the output again to verify it's valid.
         let graph2 = parse(&output).unwrap();
-        assert_eq!(graph2.nodes["a"].label.as_deref(), Some(r#"say "hi""#));
+        assert_eq!(graph2.nodes["a"].label.as_str(), r#"say "hi""#);
     }
 
     #[test]
@@ -611,10 +615,7 @@ mod tests {
         assert!(graph.nodes.contains_key("myapp"));
         assert!(graph.nodes.contains_key("libfoo"));
         assert!(graph.nodes.contains_key("libbar"));
-        assert_eq!(
-            graph.nodes["myapp"].label.as_deref(),
-            Some("My Application")
-        );
+        assert_eq!(graph.nodes["myapp"].label.as_str(), "My Application");
         // shape=box stored in attrs
         assert_eq!(
             graph.nodes["myapp"].attrs.get("shape").map(|s| s.as_str()),
@@ -720,7 +721,7 @@ mod tests {
         assert!(!graph.nodes.contains_key("b"));
         // `b` lives in the subgraph with its label.
         assert_eq!(graph.subgraphs[0].nodes.len(), 1);
-        assert_eq!(graph.subgraphs[0].nodes["b"].label.as_deref(), Some("B"));
+        assert_eq!(graph.subgraphs[0].nodes["b"].label.as_str(), "B");
         // Flattened view still has both nodes.
         let all = graph.all_nodes();
         assert_eq!(all.len(), 2);
@@ -743,7 +744,7 @@ mod tests {
         assert_eq!(graph.nodes.len(), 1);
         assert!(graph.nodes.contains_key("b"));
         assert!(!graph.nodes.contains_key("a"));
-        assert_eq!(graph.subgraphs[0].nodes["a"].label.as_deref(), Some("A"));
+        assert_eq!(graph.subgraphs[0].nodes["a"].label.as_str(), "A");
     }
 
     #[test]
@@ -770,8 +771,8 @@ mod tests {
         // Inner: b and c with labels.
         let inner = &graph.subgraphs[0].subgraphs[0];
         assert_eq!(inner.nodes.len(), 2);
-        assert_eq!(inner.nodes["b"].label.as_deref(), Some("B"));
-        assert_eq!(inner.nodes["c"].label.as_deref(), Some("C"));
+        assert_eq!(inner.nodes["b"].label.as_str(), "B");
+        assert_eq!(inner.nodes["c"].label.as_str(), "C");
         // Flattened view has all three.
         let all = graph.all_nodes();
         assert_eq!(all.len(), 3);
@@ -797,7 +798,7 @@ mod tests {
             Some("red")
         );
         assert_eq!(graph.subgraphs[0].nodes.len(), 1);
-        assert_eq!(graph.subgraphs[0].nodes["a"].label.as_deref(), Some("A"));
+        assert_eq!(graph.subgraphs[0].nodes["a"].label.as_str(), "A");
     }
 
     #[test]
@@ -829,10 +830,7 @@ mod tests {
         assert!(graph.nodes.contains_key("node8"));
         assert!(graph.nodes.contains_key("node10"));
         // node8's label is "Threads::Threads".
-        assert_eq!(
-            graph.nodes["node8"].label.as_deref(),
-            Some("Threads::Threads")
-        );
+        assert_eq!(graph.nodes["node8"].label.as_str(), "Threads::Threads");
         assert_eq!(graph.edges.len(), 13);
 
         // No legend attributes leaked into parent.
@@ -893,9 +891,9 @@ mod tests {
         )
         .unwrap();
         let adj = graph.adjacency_list();
-        assert_eq!(adj.get("a").map(|v| v.as_slice()), Some(["b"].as_slice()));
-        assert_eq!(adj.get("b").map(|v| v.as_slice()), Some(["c"].as_slice()));
-        assert_eq!(adj.get("c").map(|v| v.as_slice()), Some(["d"].as_slice()));
+        assert_eq!(adj["a"], ["b"]);
+        assert_eq!(adj["b"], ["c"]);
+        assert_eq!(adj["c"], ["d"]);
     }
 
     #[test]
@@ -1130,12 +1128,9 @@ mod tests {
         assert_eq!(graph.id.as_deref(), Some("ninja"));
 
         // "all" target node
-        assert_eq!(graph.nodes["0x7fe58d50f070"].label.as_deref(), Some("all"));
+        assert_eq!(graph.nodes["0x7fe58d50f070"].label.as_str(), "all");
         // "phony" build-rule nodes have shape=ellipse
-        assert_eq!(
-            graph.nodes["0x7fe58d50eeb0"].label.as_deref(),
-            Some("phony")
-        );
+        assert_eq!(graph.nodes["0x7fe58d50eeb0"].label.as_str(), "phony");
         assert_eq!(
             graph.nodes["0x7fe58d50eeb0"]
                 .attrs
@@ -1144,10 +1139,7 @@ mod tests {
             Some("ellipse")
         );
         // Source file node
-        assert_eq!(
-            graph.nodes["0x7fe58d508c50"].label.as_deref(),
-            Some("src/ninja.cc")
-        );
+        assert_eq!(graph.nodes["0x7fe58d508c50"].label.as_str(), "src/ninja.cc");
     }
 
     #[test]
@@ -1161,17 +1153,14 @@ mod tests {
         assert_eq!(graph.id.as_deref(), Some("ninja"));
 
         // "all" target node
-        assert_eq!(graph.nodes["0x55b5eb08a840"].label.as_deref(), Some("all"));
+        assert_eq!(graph.nodes["0x55b5eb08a840"].label.as_str(), "all");
         // Shared library output
         assert_eq!(
-            graph.nodes["0x55b5eb07a950"].label.as_deref(),
-            Some("lib/libgeos.so")
+            graph.nodes["0x55b5eb07a950"].label.as_str(),
+            "lib/libgeos.so"
         );
         // Build-rule nodes have shape=ellipse
-        assert_eq!(
-            graph.nodes["0x55b5eb1b6210"].label.as_deref(),
-            Some("phony")
-        );
+        assert_eq!(graph.nodes["0x55b5eb1b6210"].label.as_str(), "phony");
         assert_eq!(
             graph.nodes["0x55b5eb1b6210"]
                 .attrs
@@ -1192,7 +1181,7 @@ mod tests {
         assert_eq!(graph.id.as_deref(), Some("depends"));
 
         // Labels contain \n formatting directives (preserved, not decoded)
-        let label = graph.nodes["acl-native.do_fetch"].label.as_deref().unwrap();
+        let label = graph.nodes["acl-native.do_fetch"].label.as_str();
         assert!(
             label.contains("\\n"),
             "bitbake labels should preserve \\n formatting directives"

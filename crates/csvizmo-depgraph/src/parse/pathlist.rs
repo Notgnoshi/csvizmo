@@ -33,13 +33,9 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
 
             // Each unique path is inserted once; edge added with the new node.
             if !graph.nodes.contains_key(&current) {
-                graph.nodes.insert(
-                    current.clone(),
-                    NodeInfo {
-                        label: Some(component.to_string()),
-                        ..Default::default()
-                    },
-                );
+                graph
+                    .nodes
+                    .insert(current.clone(), NodeInfo::new(component.to_string()));
                 if let Some(parent) = parent {
                     graph.edges.push(Edge {
                         from: parent,
@@ -69,8 +65,8 @@ mod tests {
     fn single_path() {
         let graph = parse("src/main.rs\n").unwrap();
         assert_eq!(graph.nodes.len(), 2);
-        assert_eq!(graph.nodes["src"].label.as_deref(), Some("src"));
-        assert_eq!(graph.nodes["src/main.rs"].label.as_deref(), Some("main.rs"));
+        assert_eq!(graph.nodes["src"].label.as_str(), "src");
+        assert_eq!(graph.nodes["src/main.rs"].label.as_str(), "main.rs");
         assert_eq!(graph.edges.len(), 1);
         assert_eq!(graph.edges[0].from, "src");
         assert_eq!(graph.edges[0].to, "src/main.rs");
@@ -94,9 +90,9 @@ mod tests {
     fn nested_paths() {
         let graph = parse("a/b/c\n").unwrap();
         assert_eq!(graph.nodes.len(), 3);
-        assert_eq!(graph.nodes["a"].label.as_deref(), Some("a"));
-        assert_eq!(graph.nodes["a/b"].label.as_deref(), Some("b"));
-        assert_eq!(graph.nodes["a/b/c"].label.as_deref(), Some("c"));
+        assert_eq!(graph.nodes["a"].label.as_str(), "a");
+        assert_eq!(graph.nodes["a/b"].label.as_str(), "b");
+        assert_eq!(graph.nodes["a/b/c"].label.as_str(), "c");
         assert_eq!(graph.edges.len(), 2);
         assert_eq!(graph.edges[0].from, "a");
         assert_eq!(graph.edges[0].to, "a/b");
@@ -137,7 +133,7 @@ mod tests {
     fn single_component() {
         let graph = parse("README.md\n").unwrap();
         assert_eq!(graph.nodes.len(), 1);
-        assert_eq!(graph.nodes["README.md"].label.as_deref(), Some("README.md"));
+        assert_eq!(graph.nodes["README.md"].label.as_str(), "README.md");
         assert!(graph.edges.is_empty());
     }
 
@@ -187,10 +183,8 @@ mod tests {
         assert!(graph.nodes.contains_key("crates/csvizmo-can"));
         assert!(graph.nodes.contains_key("crates/csvizmo-can/Cargo.toml"));
         assert_eq!(
-            graph.nodes["crates/csvizmo-can/Cargo.toml"]
-                .label
-                .as_deref(),
-            Some("Cargo.toml")
+            graph.nodes["crates/csvizmo-can/Cargo.toml"].label.as_str(),
+            "Cargo.toml"
         );
         // Multiple crates share the "crates" prefix -- only one "crates" node
         let crates_children: Vec<&Edge> =
@@ -213,8 +207,8 @@ mod tests {
         assert_eq!(
             graph.nodes["crates/csvizmo-can/src/bin/can2csv.rs"]
                 .label
-                .as_deref(),
-            Some("can2csv.rs")
+                .as_str(),
+            "can2csv.rs"
         );
     }
 }

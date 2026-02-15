@@ -9,9 +9,10 @@ use crate::DepGraph;
 /// (TGF has no syntax for them).
 pub fn emit(graph: &DepGraph, writer: &mut dyn Write) -> eyre::Result<()> {
     for (id, info) in graph.all_nodes() {
-        match &info.label {
-            Some(label) => writeln!(writer, "{id}\t{label}")?,
-            None => writeln!(writer, "{id}")?,
+        if info.label != *id {
+            writeln!(writer, "{id}\t{}", info.label)?;
+        } else {
+            writeln!(writer, "{id}")?;
         }
     }
 
@@ -57,13 +58,7 @@ mod tests {
     #[test]
     fn emit_nodes_only() {
         let mut nodes = IndexMap::new();
-        nodes.insert(
-            "x".into(),
-            NodeInfo {
-                label: Some("xray".into()),
-                ..Default::default()
-            },
-        );
+        nodes.insert("x".into(), NodeInfo::new("xray"));
         let graph = DepGraph {
             nodes,
             edges: vec![],
@@ -81,15 +76,15 @@ mod tests {
         nodes.insert(
             "a".into(),
             NodeInfo {
-                label: Some("Alpha".into()),
+                label: "Alpha".into(),
+                node_type: None,
                 attrs: IndexMap::from([
                     ("shape".into(), "box".into()),
                     ("color".into(), "red".into()),
                 ]),
-                ..Default::default()
             },
         );
-        nodes.insert("b".into(), NodeInfo::default());
+        nodes.insert("b".into(), NodeInfo::new("b"));
         let graph = DepGraph {
             attrs: IndexMap::from([
                 ("name".into(), "deps".into()),
@@ -114,7 +109,7 @@ mod tests {
     #[test]
     fn subgraph_nodes_and_edges_included() {
         let graph = DepGraph {
-            nodes: IndexMap::from([("top".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([("top".into(), NodeInfo::new("top"))]),
             edges: vec![Edge {
                 from: "top".into(),
                 to: "a".into(),
@@ -122,14 +117,8 @@ mod tests {
             }],
             subgraphs: vec![DepGraph {
                 nodes: IndexMap::from([
-                    (
-                        "a".into(),
-                        NodeInfo {
-                            label: Some("Alpha".into()),
-                            ..Default::default()
-                        },
-                    ),
-                    ("b".into(), NodeInfo::default()),
+                    ("a".into(), NodeInfo::new("Alpha")),
+                    ("b".into(), NodeInfo::new("b")),
                 ]),
                 edges: vec![Edge {
                     from: "a".into(),

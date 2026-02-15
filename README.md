@@ -176,18 +176,19 @@ Multiple options are available to customize and tune the output. See `minpath --
 ## depconv
 
 Convert dependency graphs between formats. Reads from stdin or a file, writes to stdout or a file.
-Input and output formats are auto-detected from file extensions or content when `--from`/`--to` are
-not specified. Defaults to DOT output when no output format can be inferred.
+Input and output formats are auto-detected from file extensions or content when
+`--input-format`/`--output-format` are not specified. Defaults to DOT output when no output format
+can be inferred.
 
 ```sh
-$ echo -e "a Node A\nb Node B\n#\na b depends on" | depconv --to dot
+$ echo -e "a Node A\nb Node B\n#\na b depends on" | depconv --output-format dot
 digraph {
     a [label="Node A"]
     b [label="Node B"]
     a -> b [label="depends on"]
 }
 
-$ cargo tree --depth 1 | depconv --to tgf
+$ cargo tree --depth 1 | depconv --output-format tgf
 csvizmo v0.1.0
 clap v4.5.39
 ...
@@ -198,16 +199,16 @@ csvizmo v0.1.0 clap v4.5.39
 
 ### Supported formats
 
-| Format         | `--from` | `--to` | Description                                                                     |
-| -------------- | :------: | :----: | ------------------------------------------------------------------------------- |
-| DOT (GraphViz) |   yes    |  yes   | `digraph` / `graph` syntax. Parses cmake, ninja, bitbake, and ad-hoc DOT output |
-| Mermaid        |   yes    |  yes   | `flowchart` / `graph` graph types                                               |
-| TGF            |   yes    |  yes   | Trivial Graph Format                                                            |
-| Depfile        |   yes    |  yes   | Makefile `.d` depfile                                                           |
-| Tree           |   yes    |  yes   | Box-drawing trees (`tree` CLI output)                                           |
-| Pathlist       |   yes    |  yes   | One path per line; hierarchy inferred from `/` separators                       |
-| Cargo tree     |   yes    |   --   | `cargo tree` output                                                             |
-| Cargo metadata |   yes    |   --   | `cargo metadata --format-version=1` JSON                                        |
+| Format         | `--input-format` | `--output-format` | Description                                                                     |
+| -------------- | :--------------: | :---------------: | ------------------------------------------------------------------------------- |
+| DOT (GraphViz) |       yes        |        yes        | `digraph` / `graph` syntax. Parses cmake, ninja, bitbake, and ad-hoc DOT output |
+| Mermaid        |       yes        |        yes        | `flowchart` / `graph` graph types                                               |
+| TGF            |       yes        |        yes        | Trivial Graph Format                                                            |
+| Depfile        |       yes        |        yes        | Makefile `.d` depfile                                                           |
+| Tree           |       yes        |        yes        | Box-drawing trees (`tree` CLI output)                                           |
+| Pathlist       |       yes        |        yes        | One path per line; hierarchy inferred from `/` separators                       |
+| Cargo tree     |       yes        |        --         | `cargo tree` output                                                             |
+| Cargo metadata |       yes        |        --         | `cargo metadata --format-version=1` JSON                                        |
 
 ### What's preserved across formats
 
@@ -229,10 +230,41 @@ Converting from a rich format (DOT, cargo metadata) to a simpler one (TGF, depfi
 unsupported attributes. Converting in the other direction preserves graph topology but cannot
 recover lost metadata.
 
-> [!NOTE] DOT parsing requires building with `--features dot`, which pulls in the `dot-parser` crate
+> [!NOTE]
+>
+> DOT parsing requires building with `--features dot`, which pulls in the `dot-parser` crate
 > (GPL-2.0). The default build does not include this feature and is MIT-licensed. When built with
 > `--features dot`, the resulting binary is GPL-2.0. DOT _emitting_ is always available (custom
 > string formatting, no GPL dependency).
+
+## depfilter
+
+Filter or select subsets of dependency graphs. Works on the same formats as `depconv`, and is
+designed to be chained with pipes.
+
+* `depfilter select` keeps only nodes matching the given patterns
+* `depfilter filter` removes nodes matching the given patterns
+
+Both subcommands have extra options to tune their behavior.
+
+```sh
+# From a cargo dependency tree, select the subtree rooted at "clap", then filter out
+# all the proc-macro crates and their dependencies:
+$ cargo tree --depth 10 \
+    | depfilter select -p "clap*" --deps -I cargo-tree -O tgf \
+    | depfilter filter -p "*derive*" -p "*proc*" --deps -I tgf -O dot
+digraph {
+    clap [label="v4.5.57 clap"];
+    clap_builder [label="v4.5.57 clap_builder"];
+    anstream [label="v0.6.21 anstream"];
+    ...
+}
+```
+
+> [!NOTE]
+>
+> The `depfilter` tool shares the same GPL-2.0 license caveat as `depconv` with respect to
+> DOT parsing.
 
 ## can2csv
 

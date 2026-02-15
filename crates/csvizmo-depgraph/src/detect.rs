@@ -1,6 +1,6 @@
 use clap::ValueEnum;
 
-use crate::InputFormat;
+use crate::parse::InputFormat;
 
 /// Detect input format from content heuristics.
 ///

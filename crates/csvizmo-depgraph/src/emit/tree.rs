@@ -56,7 +56,7 @@ impl TreeVisitor for TreeEmitVisitor<'_> {
             }
         }
 
-        let label = ctx.info.label.as_deref().unwrap_or(ctx.node);
+        let label = &ctx.info.label;
         write!(self.writer, "{label}")?;
 
         match ctx.status {
@@ -97,13 +97,7 @@ mod tests {
     #[test]
     fn single_root() {
         let graph = DepGraph {
-            nodes: IndexMap::from([(
-                "r".into(),
-                NodeInfo {
-                    label: Some("root".into()),
-                    ..Default::default()
-                },
-            )]),
+            nodes: IndexMap::from([("r".into(), NodeInfo::new("root"))]),
             ..Default::default()
         };
         assert_eq!(emit_to_string(&graph), "root\n");
@@ -114,27 +108,9 @@ mod tests {
         // root -> a, root -> b
         let graph = DepGraph {
             nodes: IndexMap::from([
-                (
-                    "root".into(),
-                    NodeInfo {
-                        label: Some("root".into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "a".into(),
-                    NodeInfo {
-                        label: Some("alpha".into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "b".into(),
-                    NodeInfo {
-                        label: Some("bravo".into()),
-                        ..Default::default()
-                    },
-                ),
+                ("root".into(), NodeInfo::new("root")),
+                ("a".into(), NodeInfo::new("alpha")),
+                ("b".into(), NodeInfo::new("bravo")),
             ]),
             edges: vec![
                 Edge {
@@ -165,34 +141,10 @@ root
         // root -> a -> b, root -> c
         let graph = DepGraph {
             nodes: IndexMap::from([
-                (
-                    "root".into(),
-                    NodeInfo {
-                        label: Some("root".into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "a".into(),
-                    NodeInfo {
-                        label: Some("a".into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "b".into(),
-                    NodeInfo {
-                        label: Some("b".into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "c".into(),
-                    NodeInfo {
-                        label: Some("c".into()),
-                        ..Default::default()
-                    },
-                ),
+                ("root".into(), NodeInfo::new("root")),
+                ("a".into(), NodeInfo::new("a")),
+                ("b".into(), NodeInfo::new("b")),
+                ("c".into(), NodeInfo::new("c")),
             ]),
             edges: vec![
                 Edge {
@@ -230,11 +182,11 @@ root
         // Verifies continuation columns render correctly at depth 3.
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("root".into(), NodeInfo::default()),
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
-                ("d".into(), NodeInfo::default()),
+                ("root".into(), NodeInfo::new("root")),
+                ("a".into(), NodeInfo::new("a")),
+                ("b".into(), NodeInfo::new("b")),
+                ("c".into(), NodeInfo::new("c")),
+                ("d".into(), NodeInfo::new("d")),
             ]),
             edges: vec![
                 Edge {
@@ -281,12 +233,12 @@ root
         // appear in parallel when rendering x at depth 3.
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("root".into(), NodeInfo::default()),
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
-                ("d".into(), NodeInfo::default()),
-                ("x".into(), NodeInfo::default()),
+                ("root".into(), NodeInfo::new("root")),
+                ("a".into(), NodeInfo::new("a")),
+                ("b".into(), NodeInfo::new("b")),
+                ("c".into(), NodeInfo::new("c")),
+                ("d".into(), NodeInfo::new("d")),
+                ("x".into(), NodeInfo::new("x")),
             ]),
             edges: vec![
                 Edge {
@@ -336,10 +288,10 @@ root
         // d is a leaf -- no subtree suppressed, no marker.
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
-                ("d".into(), NodeInfo::default()),
+                ("a".into(), NodeInfo::new("a")),
+                ("b".into(), NodeInfo::new("b")),
+                ("c".into(), NodeInfo::new("c")),
+                ("d".into(), NodeInfo::new("d")),
             ]),
             edges: vec![
                 Edge {
@@ -383,10 +335,10 @@ a
         // c is expanded under b (showing d), then truncated under a.
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
-                ("d".into(), NodeInfo::default()),
+                ("a".into(), NodeInfo::new("a")),
+                ("b".into(), NodeInfo::new("b")),
+                ("c".into(), NodeInfo::new("c")),
+                ("d".into(), NodeInfo::new("d")),
             ]),
             edges: vec![
                 Edge {
@@ -429,9 +381,9 @@ a
         // a -> b -> c -> b
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
-                ("c".into(), NodeInfo::default()),
+                ("a".into(), NodeInfo::new("a")),
+                ("b".into(), NodeInfo::new("b")),
+                ("c".into(), NodeInfo::new("c")),
             ]),
             edges: vec![
                 Edge {
@@ -467,8 +419,8 @@ a
     fn falls_back_to_node_id() {
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("root".into(), NodeInfo::default()),
-                ("child".into(), NodeInfo::default()),
+                ("root".into(), NodeInfo::new("root")),
+                ("child".into(), NodeInfo::new("child")),
             ]),
             edges: vec![Edge {
                 from: "root".into(),
@@ -506,8 +458,8 @@ alpha
     fn multiple_roots() {
         let graph = DepGraph {
             nodes: IndexMap::from([
-                ("a".into(), NodeInfo::default()),
-                ("b".into(), NodeInfo::default()),
+                ("a".into(), NodeInfo::new("a")),
+                ("b".into(), NodeInfo::new("b")),
             ]),
             ..Default::default()
         };
@@ -522,7 +474,7 @@ root
 │   └── b
 └── c
 ";
-        let graph = crate::parse::parse(crate::InputFormat::Tree, input).unwrap();
+        let graph = crate::parse::parse(crate::parse::InputFormat::Tree, input).unwrap();
         assert_eq!(emit_to_string(&graph), input);
     }
 
@@ -534,18 +486,12 @@ root
                 (
                     "a".into(),
                     NodeInfo {
-                        label: Some("a".into()),
+                        label: "a".into(),
+                        node_type: None,
                         attrs: IndexMap::from([("shape".into(), "box".into())]),
-                        ..Default::default()
                     },
                 ),
-                (
-                    "b".into(),
-                    NodeInfo {
-                        label: Some("b".into()),
-                        ..Default::default()
-                    },
-                ),
+                ("b".into(), NodeInfo::new("b")),
             ]),
             edges: vec![Edge {
                 from: "a".into(),

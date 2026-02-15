@@ -100,8 +100,8 @@ fn emit_node(
 ) -> eyre::Result<()> {
     let indent = "    ".repeat(depth);
     let mut attrs = Vec::new();
-    if let Some(label) = &info.label {
-        attrs.push(format!("label={}", quote(label)));
+    if info.label != id {
+        attrs.push(format!("label={}", quote(&info.label)));
     }
     if let Some(node_type) = &info.node_type {
         attrs.push(format!("type={}", quote(node_type)));
@@ -267,17 +267,10 @@ digraph {
     #[test]
     fn nodes_only() {
         let mut nodes = IndexMap::new();
-        nodes.insert(
-            "x".into(),
-            NodeInfo {
-                label: Some("X Node".into()),
-                ..Default::default()
-            },
-        );
-        nodes.insert("y".into(), NodeInfo::default());
+        nodes.insert("x".into(), NodeInfo::new("X Node"));
+        nodes.insert("y".into(), NodeInfo::new("y"));
         let graph = DepGraph {
             nodes,
-            edges: vec![],
             ..Default::default()
         };
         let output = emit_to_string(&graph);
@@ -298,17 +291,16 @@ digraph {
         nodes.insert(
             "mylib".into(),
             NodeInfo {
-                label: Some("My Library".into()),
+                label: "My Library".into(),
+                node_type: None,
                 attrs: IndexMap::from([
                     ("shape".into(), "box".into()),
                     ("version".into(), "1.0".into()),
                 ]),
-                ..Default::default()
             },
         );
         let graph = DepGraph {
             nodes,
-            edges: vec![],
             ..Default::default()
         };
         let output = emit_to_string(&graph);
@@ -325,14 +317,8 @@ digraph {
     #[test]
     fn special_chars_in_ids() {
         let mut nodes = IndexMap::new();
-        nodes.insert("my node".into(), NodeInfo::default());
-        nodes.insert(
-            "has\"quotes".into(),
-            NodeInfo {
-                label: Some("a \"label\"".into()),
-                ..Default::default()
-            },
-        );
+        nodes.insert("my node".into(), NodeInfo::new("my node"));
+        nodes.insert("has\"quotes".into(), NodeInfo::new("a \"label\""));
         let graph = DepGraph {
             nodes,
             edges: vec![Edge {
@@ -358,8 +344,8 @@ digraph {
     #[test]
     fn bare_ids_not_quoted() {
         let mut nodes = IndexMap::new();
-        nodes.insert("foo_bar".into(), NodeInfo::default());
-        nodes.insert("Baz123".into(), NodeInfo::default());
+        nodes.insert("foo_bar".into(), NodeInfo::new("foo_bar"));
+        nodes.insert("Baz123".into(), NodeInfo::new("Baz123"));
         let graph = DepGraph {
             nodes,
             edges: vec![Edge {
@@ -385,8 +371,8 @@ digraph {
     #[test]
     fn dot_keyword_ids_are_quoted() {
         let mut nodes = IndexMap::new();
-        nodes.insert("node".into(), NodeInfo::default());
-        nodes.insert("edge".into(), NodeInfo::default());
+        nodes.insert("node".into(), NodeInfo::new("node"));
+        nodes.insert("edge".into(), NodeInfo::new("edge"));
         let graph = DepGraph {
             nodes,
             edges: vec![Edge {
@@ -412,9 +398,9 @@ digraph {
     #[test]
     fn dot_keyword_ids_case_insensitive() {
         let mut nodes = IndexMap::new();
-        nodes.insert("Node".into(), NodeInfo::default());
-        nodes.insert("GRAPH".into(), NodeInfo::default());
-        nodes.insert("Subgraph".into(), NodeInfo::default());
+        nodes.insert("Node".into(), NodeInfo::new("Node"));
+        nodes.insert("GRAPH".into(), NodeInfo::new("GRAPH"));
+        nodes.insert("Subgraph".into(), NodeInfo::new("Subgraph"));
         let graph = DepGraph {
             nodes,
             ..Default::default()
@@ -435,10 +421,9 @@ digraph {
     #[test]
     fn digit_leading_id_is_quoted() {
         let mut nodes = IndexMap::new();
-        nodes.insert("1abc".into(), NodeInfo::default());
+        nodes.insert("1abc".into(), NodeInfo::new("1abc"));
         let graph = DepGraph {
             nodes,
-            edges: vec![],
             ..Default::default()
         };
         let output = emit_to_string(&graph);
@@ -514,8 +499,6 @@ digraph {
     fn graph_name_emitted() {
         let graph = DepGraph {
             id: Some("deps".into()),
-            nodes: IndexMap::new(),
-            edges: vec![],
             ..Default::default()
         };
         let output = emit_to_string(&graph);
@@ -527,8 +510,6 @@ digraph {
         let graph = DepGraph {
             id: Some("deps".into()),
             attrs: IndexMap::from([("rankdir".into(), "LR".into())]),
-            nodes: IndexMap::new(),
-            edges: vec![],
             ..Default::default()
         };
         let output = emit_to_string(&graph);
@@ -551,12 +532,12 @@ digraph deps {
                 (
                     "a".into(),
                     NodeInfo {
-                        label: Some("A".into()),
+                        label: "A".into(),
+                        node_type: None,
                         attrs: IndexMap::from([("shape".into(), "box".into())]),
-                        ..Default::default()
                     },
                 ),
-                ("b".into(), NodeInfo::default()),
+                ("b".into(), NodeInfo::new("b")),
             ]),
             edges: vec![Edge {
                 from: "a".into(),
@@ -586,13 +567,13 @@ digraph deps {
     #[test]
     fn subgraph_emitted() {
         let graph = DepGraph {
-            nodes: IndexMap::from([("top".into(), NodeInfo::default())]),
+            nodes: IndexMap::from([("top".into(), NodeInfo::new("top"))]),
             subgraphs: vec![DepGraph {
                 id: Some("cluster0".into()),
                 attrs: IndexMap::from([("label".into(), "Group A".into())]),
                 nodes: IndexMap::from([
-                    ("a".into(), NodeInfo::default()),
-                    ("b".into(), NodeInfo::default()),
+                    ("a".into(), NodeInfo::new("a")),
+                    ("b".into(), NodeInfo::new("b")),
                 ]),
                 edges: vec![Edge {
                     from: "a".into(),
@@ -632,9 +613,9 @@ digraph {
         nodes.insert(
             "mylib".into(),
             NodeInfo {
-                label: Some("My Library".into()),
+                label: "My Library".into(),
                 node_type: Some("lib".into()),
-                ..Default::default()
+                attrs: Default::default(),
             },
         );
         let graph = DepGraph {
@@ -652,7 +633,7 @@ digraph {
         nodes.insert(
             "mylib".into(),
             NodeInfo {
-                label: Some("My Library".into()),
+                label: "My Library".into(),
                 node_type: Some("proc-macro".into()),
                 attrs: IndexMap::from([
                     ("version".into(), "1.0".into()),
@@ -677,7 +658,7 @@ digraph {
         nodes.insert(
             "mylib".into(),
             NodeInfo {
-                label: Some("My Library".into()),
+                label: "My Library".into(),
                 node_type: None,
                 attrs: IndexMap::from([("version".into(), "1.0".into())]),
             },
@@ -697,33 +678,33 @@ digraph {
         nodes.insert(
             "pm".into(),
             NodeInfo {
+                label: "pm".into(),
                 node_type: Some("proc-macro".into()),
                 attrs: IndexMap::from([("shape".into(), "diamond".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "mybin".into(),
             NodeInfo {
+                label: "mybin".into(),
                 node_type: Some("bin".into()),
                 attrs: IndexMap::from([("shape".into(), "box".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "bs".into(),
             NodeInfo {
+                label: "bs".into(),
                 node_type: Some("build-script".into()),
                 attrs: IndexMap::from([("shape".into(), "note".into())]),
-                ..Default::default()
             },
         );
         nodes.insert(
             "opt".into(),
             NodeInfo {
+                label: "opt".into(),
                 node_type: Some("optional".into()),
                 attrs: IndexMap::from([("style".into(), "dashed".into())]),
-                ..Default::default()
             },
         );
         let graph = DepGraph {
@@ -750,9 +731,9 @@ digraph {
         nodes.insert(
             "pm".into(),
             NodeInfo {
+                label: "pm".into(),
                 node_type: Some("proc-macro".into()),
                 attrs: IndexMap::from([("shape".into(), "box".into())]),
-                ..Default::default()
             },
         );
         let graph = DepGraph {
@@ -851,14 +832,7 @@ digraph {
     #[test]
     fn no_type_no_styling() {
         let mut nodes = IndexMap::new();
-        nodes.insert(
-            "plain".into(),
-            NodeInfo {
-                label: Some("Plain".into()),
-                node_type: None,
-                ..Default::default()
-            },
-        );
+        nodes.insert("plain".into(), NodeInfo::new("Plain"));
         let graph = DepGraph {
             nodes,
             ..Default::default()

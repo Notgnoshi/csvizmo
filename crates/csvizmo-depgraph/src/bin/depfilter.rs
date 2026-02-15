@@ -1,39 +1,51 @@
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
+use csvizmo_depgraph::algorithm;
+use csvizmo_depgraph::algorithm::filter::FilterArgs;
+use csvizmo_depgraph::algorithm::select::SelectArgs;
 use csvizmo_depgraph::emit::OutputFormat;
 use csvizmo_depgraph::parse::InputFormat;
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
 
-/// Dependency graph format converter.
+/// Filter or select nodes from dependency graphs.
 ///
-/// Formats are auto-detected from file extensions or content when --input-format/--output-format are not specified.
+/// Operations are performed via select or filter subcommands.
+/// Chain operations by piping: depfilter ... | depfilter ...
 #[derive(Debug, Parser)]
 #[clap(version, verbatim_doc_comment)]
 struct Args {
-    #[clap(short, long, default_value_t = tracing::Level::INFO)]
+    /// Logging level
+    #[clap(long, default_value_t = tracing::Level::INFO)]
     log_level: tracing::Level,
 
-    /// Print the detected input format and exit
-    #[clap(long)]
-    detect: bool,
-
-    /// Path to the input. stdin if '-' or omitted
-    #[clap(short, long)]
+    /// Input file (stdin if '-' or omitted)
+    #[clap(short, long, global = true)]
     input: Option<PathBuf>,
 
-    /// Input format (auto-detected from extension or content if omitted)
-    #[clap(short = 'I', long)]
+    /// Input format (auto-detected from extension/content if omitted)
+    #[clap(short = 'I', long, global = true)]
     input_format: Option<InputFormat>,
 
-    /// Path to the output. stdout if '-' or omitted
-    #[clap(short, long)]
+    /// Output file (stdout if '-' or omitted)
+    #[clap(short, long, global = true)]
     output: Option<PathBuf>,
 
-    /// Output format (auto-detected from output extension if omitted, defaults to DOT)
-    #[clap(short = 'O', long)]
+    /// Output format (auto-detected from extension, defaults to DOT)
+    #[clap(short = 'O', long, global = true)]
     output_format: Option<OutputFormat>,
+
+    #[clap(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Select nodes matching patterns and optionally their dependencies/ancestors
+    Select(SelectArgs),
+    /// Remove nodes matching patterns and optionally cascade to dependencies/ancestors
+    Filter(FilterArgs),
 }
 
 fn main() -> eyre::Result<()> {
@@ -68,12 +80,6 @@ fn main() -> eyre::Result<()> {
         input_path.as_deref(),
         &input_text,
     )?;
-
-    if args.detect {
-        println!("{input_format}");
-        return Ok(());
-    }
-
     let output_format =
         csvizmo_depgraph::emit::resolve_output_format(args.output_format, output_path.as_deref())?;
 
@@ -84,6 +90,11 @@ fn main() -> eyre::Result<()> {
         graph.all_edges().len(),
         graph.subgraphs.len()
     );
+
+    let graph = match &args.command {
+        Command::Select(select_args) => algorithm::select::select(&graph, select_args)?,
+        Command::Filter(filter_args) => algorithm::filter::filter(&graph, filter_args)?,
+    };
 
     let mut output = get_output_writer(&output_path)?;
     csvizmo_depgraph::emit::emit(output_format, &graph, &mut output)?;

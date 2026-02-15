@@ -7,8 +7,66 @@ mod tree;
 mod walk;
 
 use std::io::Write;
+use std::path::Path;
 
-use crate::{DepGraph, OutputFormat};
+use clap::ValueEnum;
+
+use crate::DepGraph;
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum OutputFormat {
+    Dot,
+    Mermaid,
+    Tgf,
+    Depfile,
+    Tree,
+    Pathlist,
+}
+
+impl TryFrom<&Path> for OutputFormat {
+    type Error = eyre::Report;
+
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .ok_or_else(|| eyre::eyre!("no file extension: {}", path.display()))?;
+        match ext {
+            "dot" | "gv" => Ok(Self::Dot),
+            "mmd" | "mermaid" => Ok(Self::Mermaid),
+            "tgf" => Ok(Self::Tgf),
+            "d" => Ok(Self::Depfile),
+            _ => eyre::bail!("unrecognized dependency graph file extension: .{ext}"),
+        }
+    }
+}
+
+/// Resolve output format using explicit flag, file extension, or default to DOT.
+///
+/// Resolution order:
+/// 1. Explicit flag if provided
+/// 2. File extension if path is available
+/// 3. Default to DOT format
+///
+/// Returns an error if file extension is present but unrecognized.
+pub fn resolve_output_format(
+    flag: Option<OutputFormat>,
+    path: Option<&Path>,
+) -> eyre::Result<OutputFormat> {
+    if let Some(f) = flag {
+        return Ok(f);
+    }
+    match path.map(OutputFormat::try_from) {
+        Some(Ok(f)) => {
+            tracing::info!("Detected output format: {f:?} from file extension");
+            Ok(f)
+        }
+        Some(Err(e)) => Err(
+            e.wrap_err("Failed to detect output format from file extension; use --output-format")
+        ),
+        None => Ok(OutputFormat::Dot),
+    }
+}
 
 /// Emit a [`DepGraph`] in the given output format.
 ///
@@ -48,21 +106,9 @@ pub(crate) mod fixtures {
     /// A small graph for testing: a -> b -> c, a -> c
     pub fn sample_graph() -> DepGraph {
         let mut nodes = IndexMap::new();
-        nodes.insert(
-            "a".into(),
-            NodeInfo {
-                label: Some("alpha".into()),
-                ..Default::default()
-            },
-        );
-        nodes.insert(
-            "b".into(),
-            NodeInfo {
-                label: Some("bravo".into()),
-                ..Default::default()
-            },
-        );
-        nodes.insert("c".into(), NodeInfo::default());
+        nodes.insert("a".into(), NodeInfo::new("alpha"));
+        nodes.insert("b".into(), NodeInfo::new("bravo"));
+        nodes.insert("c".into(), NodeInfo::new("c"));
 
         DepGraph {
             nodes,
