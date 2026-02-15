@@ -452,3 +452,321 @@ digraph {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, "2\tlibbar\n3\tmyapp\n#\n3\t2\n");
 }
+
+// -- between integration tests --
+
+#[test]
+fn between_two_nodes() {
+    // a -> b -> c: between a and c includes intermediate b
+    let graph = "a\nb\nc\n#\na\tb\nb\tc\n";
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "a",
+            "-p",
+            "c",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nc\n#\na\tb\nb\tc\n");
+}
+
+#[test]
+fn between_by_id() {
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "1",
+            "-p",
+            "2",
+            "--key",
+            "id",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(SIMPLE_GRAPH)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "1\tlibfoo\n2\tlibbar\n#\n1\t2\n");
+}
+
+#[test]
+fn between_glob_multiple_nodes() {
+    // a -> b -> c: glob "?" matches all three, paths exist between all pairs
+    let graph = "a\nb\nc\n#\na\tb\nb\tc\n";
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "?",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nc\n#\na\tb\nb\tc\n");
+}
+
+#[test]
+fn between_no_matching_patterns() {
+    let graph = "a\nb\n#\na\tb\n";
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "nonexistent",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+fn between_no_path() {
+    // a -> b, c -> d: no path between a and c
+    let graph = "a\nb\nc\nd\n#\na\tb\nc\td\n";
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "a",
+            "-p",
+            "c",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+fn between_cargo_metadata_fixture() {
+    // Use the real cargo-metadata.json fixture to test between on a non-trivial graph.
+    // csvizmo-depgraph depends on clap both directly and via csvizmo-utils,
+    // so csvizmo-utils is an intermediate node on a path to clap.
+    // clap in turn depends on clap_builder, clap_derive, and clap_builder -> clap_lex.
+    let input = include_str!("../../../data/depconv/cargo-metadata.json");
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "csvizmo-depgraph",
+            "-p",
+            "clap*",
+            "--input-format",
+            "cargo-metadata",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+clap_4.5.57\tclap
+clap_builder_4.5.57\tclap_builder
+clap_derive_4.5.55\tclap_derive
+clap_lex_0.7.7\tclap_lex
+csvizmo-depgraph_0.5.0\tcsvizmo-depgraph
+csvizmo-utils_0.5.0\tcsvizmo-utils
+#
+clap_4.5.57\tclap_builder_4.5.57
+clap_4.5.57\tclap_derive_4.5.55
+clap_builder_4.5.57\tclap_lex_0.7.7
+csvizmo-depgraph_0.5.0\tclap_4.5.57
+csvizmo-depgraph_0.5.0\tcsvizmo-utils_0.5.0
+csvizmo-utils_0.5.0\tclap_4.5.57
+"
+    );
+}
+
+// -- cycles integration tests --
+
+#[test]
+fn cycles_dag_no_cycles() {
+    // a -> b -> c: no cycles, empty output
+    let graph = "a\nb\nc\n#\na\tb\nb\tc\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "tgf"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+fn cycles_simple_three_node() {
+    // a -> b -> c -> a: single cycle with all three nodes
+    let graph = "a\nb\nc\n#\na\tb\nb\tc\nc\ta\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_cycle_0 {
+        label=\"cycle_0\";
+        a;
+        b;
+        c;
+        a -> b;
+        b -> c;
+        c -> a;
+    }
+}
+"
+    );
+}
+
+#[test]
+fn cycles_multiple_disjoint() {
+    // cycle1: a <-> b, cycle2: c <-> d (no edges between them)
+    let graph = "a\nb\nc\nd\n#\na\tb\nb\ta\nc\td\nd\tc\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Both cycles appear as separate subgraphs, no cross-cycle edges.
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_cycle_0 {
+        label=\"cycle_0\";
+        a;
+        b;
+        a -> b;
+        b -> a;
+    }
+    subgraph cluster_cycle_1 {
+        label=\"cycle_1\";
+        c;
+        d;
+        c -> d;
+        d -> c;
+    }
+}
+"
+    );
+}
+
+#[test]
+fn cycles_mixed_graph_excludes_acyclic() {
+    // x -> a <-> b -> y: only a and b form a cycle; x and y excluded
+    let graph = "x\na\nb\ny\n#\nx\ta\na\tb\nb\ta\nb\ty\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_cycle_0 {
+        label=\"cycle_0\";
+        a;
+        b;
+        a -> b;
+        b -> a;
+    }
+}
+"
+    );
+}
+
+#[test]
+fn cycles_cross_cycle_edges_at_top_level() {
+    // cycle1: a <-> b, cycle2: c <-> d, cross-edge: b -> c
+    let graph = "a\nb\nc\nd\n#\na\tb\nb\ta\nc\td\nd\tc\nb\tc\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // tarjan_scc returns SCCs in reverse topological order: c,d before a,b
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_cycle_0 {
+        label=\"cycle_0\";
+        c;
+        d;
+        c -> d;
+        d -> c;
+    }
+    subgraph cluster_cycle_1 {
+        label=\"cycle_1\";
+        a;
+        b;
+        a -> b;
+        b -> a;
+    }
+    b -> c;
+}
+"
+    );
+}
+
+#[test]
+fn cycles_self_loop_ignored() {
+    // a -> a: self-loop is not a cycle (SCC size 1)
+    let graph = "a\n#\na\ta\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "tgf"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
