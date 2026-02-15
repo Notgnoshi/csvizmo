@@ -377,6 +377,7 @@ digraph {
     );
 }
 
+#[cfg(feature = "dot")]
 #[test]
 fn filter_preserve_connectivity_subgraph() {
     // subgraph { a -> b -> c }: remove b, bypass a -> c stays in subgraph
@@ -421,6 +422,7 @@ digraph {
     );
 }
 
+#[cfg(feature = "dot")]
 #[test]
 fn filter_dot_input() {
     let dot_input = "\
