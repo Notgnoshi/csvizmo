@@ -794,8 +794,8 @@ fn diamonds_simple() {
         stdout,
         "\
 digraph {
-    subgraph cluster_D {
-        label=\"D\";
+    subgraph \"cluster_A..D\" {
+        label=\"A..D\";
         A;
         B;
         C;
@@ -853,8 +853,8 @@ fn diamonds_pattern_filter() {
         stdout,
         "\
 digraph {
-    subgraph cluster_G {
-        label=\"G\";
+    subgraph \"cluster_D..G\" {
+        label=\"D..G\";
         D;
         E;
         F;

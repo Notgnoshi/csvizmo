@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 use clap::Parser;
 use indexmap::IndexMap;
@@ -6,7 +6,7 @@ use petgraph::Direction;
 use petgraph::graph::NodeIndex;
 
 use super::{MatchKey, build_globset};
-use crate::{DepGraph, Edge, FlatGraphView, NodeInfo};
+use crate::{DepGraph, FlatGraphView, NodeInfo};
 
 #[derive(Clone, Debug, Default, Parser)]
 pub struct DiamondsArgs {
@@ -21,6 +21,10 @@ pub struct DiamondsArgs {
     /// Only report diamonds with shortest path >= N edges
     #[clap(long)]
     pub min_depth: Option<usize>,
+
+    /// Suppress edges between different diamond subgraphs
+    #[clap(long)]
+    pub no_cross_edges: bool,
 }
 
 impl DiamondsArgs {
@@ -38,6 +42,11 @@ impl DiamondsArgs {
         self.min_depth = Some(n);
         self
     }
+
+    pub fn no_cross_edges(mut self) -> Self {
+        self.no_cross_edges = true;
+        self
+    }
 }
 
 /// Detect diamond dependencies in the graph and output them as subgraphs.
@@ -46,9 +55,11 @@ impl DiamondsArgs {
 /// paths exist from top to bottom. Detection finds join nodes (in-degree >= 2),
 /// computes pairwise LCA of their parents, and deduplicates by (top, bottom) pair.
 ///
-/// Diamonds are grouped by bottom node (join point). One subgraph per unique bottom
-/// node, containing all paths from all diamond tops to that bottom. Nodes live inside
-/// subgraphs (for DOT cluster rendering), edges live at root level (deduplicated).
+/// Each diamond (top, bottom) pair is emitted as its own subgraph. Nodes live inside
+/// subgraphs (for DOT cluster rendering), edges live at root level. Edges internal to
+/// at least one diamond are always included. Cross-edges (connecting nodes in different
+/// diamonds but not on any single diamond's paths) are included by default but can be
+/// suppressed with `no_cross_edges`.
 ///
 /// Complexity:
 /// - Overall: O( (sum k_j)(N+E) + (sum k_j^2)(N) + D(N+E) ) where k_j = in-degree
@@ -148,32 +159,27 @@ pub fn diamonds(graph: &DepGraph, args: &DiamondsArgs) -> eyre::Result<DepGraph>
         return Ok(DepGraph::default());
     }
 
-    // Group diamonds by bottom node.
-    let mut groups: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
-    for &(top, bottom) in &diamond_pairs {
-        groups.entry(bottom).or_default().push(top);
-    }
+    // Sort diamond pairs by (top_id, bottom_id) for deterministic output.
+    let mut sorted_pairs: Vec<(NodeIndex, NodeIndex)> = diamond_pairs.into_iter().collect();
+    sorted_pairs.sort_by_key(|&(top, bottom)| {
+        (view.idx_to_id[top.index()], view.idx_to_id[bottom.index()])
+    });
 
-    // Sort groups by bottom node ID for deterministic output.
-    let mut sorted_groups: Vec<(NodeIndex, Vec<NodeIndex>)> = groups.into_iter().collect();
-    sorted_groups.sort_by_key(|(bottom, _)| view.idx_to_id[bottom.index()]);
-
+    // Build one subgraph per diamond and collect edges.
     let mut subgraphs = Vec::new();
-    let mut root_edges: IndexMap<(String, String), Edge> = IndexMap::new();
+    let mut internal_edge_keys: HashSet<(&str, &str)> = HashSet::new();
+    let mut all_diamond_ids: HashSet<&str> = HashSet::new();
 
-    for (bottom, tops) in &sorted_groups {
-        let backward = view.bfs([*bottom], Direction::Incoming, None);
-        let forward_union: HashSet<NodeIndex> = tops
-            .iter()
-            .flat_map(|&top| view.bfs([top], Direction::Outgoing, None))
-            .collect();
-
-        let keep: HashSet<NodeIndex> = backward.intersection(&forward_union).copied().collect();
+    for &(top, bottom) in &sorted_pairs {
+        let backward = view.bfs([bottom], Direction::Incoming, None);
+        let forward = view.bfs([top], Direction::Outgoing, None);
+        let keep: HashSet<NodeIndex> = backward.intersection(&forward).copied().collect();
 
         let keep_ids: HashSet<&str> = keep
             .iter()
             .filter_map(|idx| view.idx_to_id.get(idx.index()).copied())
             .collect();
+        all_diamond_ids.extend(&keep_ids);
 
         let nodes: IndexMap<String, NodeInfo> = all_nodes
             .iter()
@@ -181,23 +187,38 @@ pub fn diamonds(graph: &DepGraph, args: &DiamondsArgs) -> eyre::Result<DepGraph>
             .map(|(id, info)| (id.clone(), info.clone()))
             .collect();
 
+        // Track which edges are internal to at least one diamond.
+        for edge in all_edges {
+            if keep_ids.contains(edge.from.as_str()) && keep_ids.contains(edge.to.as_str()) {
+                internal_edge_keys.insert((edge.from.as_str(), edge.to.as_str()));
+            }
+        }
+
+        let top_id = view.idx_to_id[top.index()];
         let bottom_id = view.idx_to_id[bottom.index()];
         subgraphs.push(DepGraph {
-            id: Some(bottom_id.to_string()),
+            id: Some(format!("{top_id}..{bottom_id}")),
             nodes,
             ..Default::default()
         });
+    }
 
-        for edge in all_edges {
-            if keep_ids.contains(edge.from.as_str()) && keep_ids.contains(edge.to.as_str()) {
-                let key = (edge.from.clone(), edge.to.clone());
-                root_edges.entry(key).or_insert_with(|| edge.clone());
-            }
+    // Collect root-level edges: internal edges (always) + cross-edges (unless suppressed).
+    let mut seen_edges: HashSet<(&str, &str)> = HashSet::new();
+    let mut edges = Vec::new();
+    for edge in all_edges {
+        let key = (edge.from.as_str(), edge.to.as_str());
+        let is_internal = internal_edge_keys.contains(&key);
+        let is_cross = !is_internal
+            && all_diamond_ids.contains(edge.from.as_str())
+            && all_diamond_ids.contains(edge.to.as_str());
+        if (is_internal || (is_cross && !args.no_cross_edges)) && seen_edges.insert(key) {
+            edges.push(edge.clone());
         }
     }
 
     Ok(DepGraph {
-        edges: root_edges.into_values().collect(),
+        edges,
         subgraphs,
         ..Default::default()
     })
@@ -229,6 +250,7 @@ fn shortest_path_len(view: &FlatGraphView, from: NodeIndex, to: NodeIndex) -> us
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{DepGraph, Edge, NodeInfo};
 
     fn make_graph(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> DepGraph {
         DepGraph {
@@ -277,7 +299,7 @@ mod tests {
         assert_eq!(result.subgraphs.len(), 1);
 
         let sg = &result.subgraphs[0];
-        assert_eq!(sg.id.as_deref(), Some("D"));
+        assert_eq!(sg.id.as_deref(), Some("A..D"));
         assert_eq!(sorted_node_ids(sg), vec!["A", "B", "C", "D"]);
         assert_eq!(
             sorted_edge_pairs(&result),
@@ -325,19 +347,19 @@ mod tests {
         let result = diamonds(&g, &DiamondsArgs::default()).unwrap();
         assert_eq!(result.subgraphs.len(), 2);
 
-        let sg_d = result
+        let sg_ad = result
             .subgraphs
             .iter()
-            .find(|sg| sg.id.as_deref() == Some("D"))
+            .find(|sg| sg.id.as_deref() == Some("A..D"))
             .unwrap();
-        let sg_g = result
+        let sg_dg = result
             .subgraphs
             .iter()
-            .find(|sg| sg.id.as_deref() == Some("G"))
+            .find(|sg| sg.id.as_deref() == Some("D..G"))
             .unwrap();
 
-        assert_eq!(sorted_node_ids(sg_d), vec!["A", "B", "C", "D"]);
-        assert_eq!(sorted_node_ids(sg_g), vec!["D", "E", "F", "G"]);
+        assert_eq!(sorted_node_ids(sg_ad), vec!["A", "B", "C", "D"]);
+        assert_eq!(sorted_node_ids(sg_dg), vec!["D", "E", "F", "G"]);
     }
 
     #[test]
@@ -357,10 +379,22 @@ mod tests {
         );
         let result = diamonds(&g, &DiamondsArgs::default()).unwrap();
 
-        assert_eq!(result.subgraphs.len(), 1);
-        let sg = &result.subgraphs[0];
-        assert_eq!(sg.id.as_deref(), Some("J"));
-        assert_eq!(sorted_node_ids(sg), vec!["A", "B", "J", "X", "Y"]);
+        // Two diamonds: (A, J) and (B, J), each with its own subgraph.
+        assert_eq!(result.subgraphs.len(), 2);
+
+        let sg_aj = result
+            .subgraphs
+            .iter()
+            .find(|sg| sg.id.as_deref() == Some("A..J"))
+            .unwrap();
+        let sg_bj = result
+            .subgraphs
+            .iter()
+            .find(|sg| sg.id.as_deref() == Some("B..J"))
+            .unwrap();
+
+        assert_eq!(sorted_node_ids(sg_aj), vec!["A", "J", "X", "Y"]);
+        assert_eq!(sorted_node_ids(sg_bj), vec!["B", "J", "X", "Y"]);
         assert_eq!(
             sorted_edge_pairs(&result),
             vec![
@@ -394,7 +428,7 @@ mod tests {
 
         assert_eq!(result.subgraphs.len(), 1);
         let sg = &result.subgraphs[0];
-        assert_eq!(sg.id.as_deref(), Some("J"));
+        assert_eq!(sg.id.as_deref(), Some("A..J"));
         assert_eq!(sorted_node_ids(sg), vec!["A", "B", "C", "D", "J"]);
     }
 
@@ -427,7 +461,7 @@ mod tests {
 
         assert_eq!(result.subgraphs.len(), 1);
         let sg = &result.subgraphs[0];
-        assert_eq!(sg.id.as_deref(), Some("G"));
+        assert_eq!(sg.id.as_deref(), Some("D..G"));
         assert_eq!(sorted_node_ids(sg), vec!["D", "E", "F", "G"]);
     }
 
@@ -448,6 +482,96 @@ mod tests {
         let args = DiamondsArgs::default().min_depth(3);
         let result = diamonds(&g, &args).unwrap();
         assert!(result.subgraphs.is_empty());
+    }
+
+    #[test]
+    fn cross_edges_included_by_default() {
+        // Two disjoint diamonds with a cross-edge between them.
+        // Diamond (A, D): A -> B -> D, A -> C -> D
+        // Diamond (E, H): E -> F -> H, E -> G -> H
+        // Cross-edge: B -> E (connects diamond nodes across different diamonds)
+        let g = make_graph(
+            &[
+                ("A", "A"),
+                ("B", "B"),
+                ("C", "C"),
+                ("D", "D"),
+                ("E", "E"),
+                ("F", "F"),
+                ("G", "G"),
+                ("H", "H"),
+            ],
+            &[
+                ("A", "B"),
+                ("A", "C"),
+                ("B", "D"),
+                ("B", "E"),
+                ("C", "D"),
+                ("E", "F"),
+                ("E", "G"),
+                ("F", "H"),
+                ("G", "H"),
+            ],
+        );
+        let result = diamonds(&g, &DiamondsArgs::default()).unwrap();
+
+        assert_eq!(result.subgraphs.len(), 2);
+        // B -> E is a cross-edge: B is in (A,D), E is in (E,H), but the edge
+        // is not internal to either diamond.
+        assert!(
+            sorted_edge_pairs(&result).contains(&("B", "E")),
+            "cross-edge B->E should be included by default"
+        );
+    }
+
+    #[test]
+    fn cross_edges_suppressed() {
+        // Same graph as cross_edges_included_by_default, but with no_cross_edges.
+        let g = make_graph(
+            &[
+                ("A", "A"),
+                ("B", "B"),
+                ("C", "C"),
+                ("D", "D"),
+                ("E", "E"),
+                ("F", "F"),
+                ("G", "G"),
+                ("H", "H"),
+            ],
+            &[
+                ("A", "B"),
+                ("A", "C"),
+                ("B", "D"),
+                ("B", "E"),
+                ("C", "D"),
+                ("E", "F"),
+                ("E", "G"),
+                ("F", "H"),
+                ("G", "H"),
+            ],
+        );
+        let args = DiamondsArgs::default().no_cross_edges();
+        let result = diamonds(&g, &args).unwrap();
+
+        assert_eq!(result.subgraphs.len(), 2);
+        assert!(
+            !sorted_edge_pairs(&result).contains(&("B", "E")),
+            "cross-edge B->E should be suppressed"
+        );
+        // Internal edges are still present.
+        assert_eq!(
+            sorted_edge_pairs(&result),
+            vec![
+                ("A", "B"),
+                ("A", "C"),
+                ("B", "D"),
+                ("C", "D"),
+                ("E", "F"),
+                ("E", "G"),
+                ("F", "H"),
+                ("G", "H"),
+            ]
+        );
     }
 
     #[test]
