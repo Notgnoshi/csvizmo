@@ -522,22 +522,22 @@ fn cargo_tree_auto_detect() {
     assert_eq!(node_lines.len(), 69);
     assert_eq!(edge_lines.len(), 111);
 
-    // Root node should be first
+    // Root node should be first (spaces in IDs become underscores in TGF)
     assert!(
-        node_lines[0].starts_with("csvizmo-depgraph v0.5.0\t"),
+        node_lines[0].starts_with("csvizmo-depgraph_v0.5.0\t"),
         "root node should be first, got: {}",
         node_lines[0]
     );
 
     // A known dependency should appear as a node
     assert!(
-        node_lines.iter().any(|l| l.starts_with("clap v4.5.57\t")),
+        node_lines.iter().any(|l| l.starts_with("clap_v4.5.57\t")),
         "clap should be in node list"
     );
 
     // A known edge should exist
     assert!(
-        edge_lines.contains(&"csvizmo-depgraph v0.5.0\tclap v4.5.57"),
+        edge_lines.contains(&"csvizmo-depgraph_v0.5.0\tclap_v4.5.57"),
         "root -> clap edge should exist"
     );
 }
