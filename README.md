@@ -117,7 +117,9 @@ src,seq_id,longitude_deg,latitude_deg,altitude_m,sog_mps,cog_deg_cwfn,cog_ref,me
 ...
 ```
 
-> [!IMPORTANT] If you want to use `can2k` together with `qgsdir`, you need to use `can2k --wkt`.
+> [!IMPORTANT]
+>
+> If you want to use `can2k` together with `qgsdir`, you need to use `can2k --wkt`.
 
 ## qgsdir
 
