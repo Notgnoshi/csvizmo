@@ -770,3 +770,124 @@ fn cycles_self_loop_ignored() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, "#\n");
 }
+
+// -- diamonds integration tests --
+
+#[test]
+fn diamonds_simple() {
+    // A -> B -> D, A -> C -> D: single diamond (A, D)
+    let graph = "A\nB\nC\nD\n#\nA\tB\nA\tC\nB\tD\nC\tD\n";
+    let output = tool!("depfilter")
+        .args([
+            "diamonds",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "dot",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_D {
+        label=\"D\";
+        A;
+        B;
+        C;
+        D;
+    }
+    A -> B;
+    A -> C;
+    B -> D;
+    C -> D;
+}
+"
+    );
+}
+
+#[test]
+fn diamonds_no_diamonds() {
+    // A -> B -> C: linear chain, no diamonds
+    let graph = "A\nB\nC\n#\nA\tB\nB\tC\n";
+    let output = tool!("depfilter")
+        .args([
+            "diamonds",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+fn diamonds_pattern_filter() {
+    // Nested: (A,D) and (D,G). Pattern "G" keeps only (D,G).
+    let graph = "A\nB\nC\nD\nE\nF\nG\n#\nA\tB\nA\tC\nB\tD\nC\tD\nD\tE\nD\tF\nE\tG\nF\tG\n";
+    let output = tool!("depfilter")
+        .args([
+            "diamonds",
+            "-p",
+            "G",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "dot",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_G {
+        label=\"G\";
+        D;
+        E;
+        F;
+        G;
+    }
+    D -> E;
+    D -> F;
+    E -> G;
+    F -> G;
+}
+"
+    );
+}
+
+#[test]
+fn diamonds_min_depth_filter() {
+    // Diamond A -> B -> D, A -> C -> D: shortest path = 2 edges.
+    // min_depth=3 filters it out.
+    let graph = "A\nB\nC\nD\n#\nA\tB\nA\tC\nB\tD\nC\tD\n";
+    let output = tool!("depfilter")
+        .args([
+            "diamonds",
+            "--min-depth",
+            "3",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}

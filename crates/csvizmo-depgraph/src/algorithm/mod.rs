@@ -1,5 +1,6 @@
 pub mod between;
 pub mod cycles;
+pub mod diamonds;
 pub mod filter;
 pub mod select;
 

@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use csvizmo_depgraph::algorithm;
 use csvizmo_depgraph::algorithm::between::BetweenArgs;
 use csvizmo_depgraph::algorithm::cycles::CyclesArgs;
+use csvizmo_depgraph::algorithm::diamonds::DiamondsArgs;
 use csvizmo_depgraph::algorithm::filter::FilterArgs;
 use csvizmo_depgraph::algorithm::select::SelectArgs;
 use csvizmo_depgraph::emit::OutputFormat;
@@ -52,6 +53,8 @@ enum Command {
     Between(BetweenArgs),
     /// Detect cycles (strongly connected components) and output each as a subgraph
     Cycles(CyclesArgs),
+    /// Detect diamond dependencies and output each as a subgraph grouped by bottom node
+    Diamonds(DiamondsArgs),
 }
 
 fn main() -> eyre::Result<()> {
@@ -102,6 +105,7 @@ fn main() -> eyre::Result<()> {
         Command::Filter(filter_args) => algorithm::filter::filter(&graph, filter_args)?,
         Command::Between(between_args) => algorithm::between::between(&graph, between_args)?,
         Command::Cycles(cycles_args) => algorithm::cycles::cycles(&graph, cycles_args)?,
+        Command::Diamonds(diamonds_args) => algorithm::diamonds::diamonds(&graph, diamonds_args)?,
     };
 
     let mut output = get_output_writer(&output_path)?;
