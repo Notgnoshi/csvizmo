@@ -230,10 +230,41 @@ Converting from a rich format (DOT, cargo metadata) to a simpler one (TGF, depfi
 unsupported attributes. Converting in the other direction preserves graph topology but cannot
 recover lost metadata.
 
-> [!NOTE] DOT parsing requires building with `--features dot`, which pulls in the `dot-parser` crate
+> [!NOTE]
+>
+> DOT parsing requires building with `--features dot`, which pulls in the `dot-parser` crate
 > (GPL-2.0). The default build does not include this feature and is MIT-licensed. When built with
 > `--features dot`, the resulting binary is GPL-2.0. DOT _emitting_ is always available (custom
 > string formatting, no GPL dependency).
+
+## depfilter
+
+Filter or select subsets of dependency graphs. Works on the same formats as `depconv`, and is
+designed to be chained with pipes.
+
+* `depfilter select` keeps only nodes matching the given patterns
+* `depfilter filter` removes nodes matching the given patterns
+
+Both subcommands have extra options to tune their behavior.
+
+```sh
+# From a cargo dependency tree, select the subtree rooted at "clap", then filter out
+# all the proc-macro crates and their dependencies:
+$ cargo tree --depth 10 \
+    | depfilter select -p "clap*" --deps -I cargo-tree -O tgf \
+    | depfilter filter -p "*derive*" -p "*proc*" --deps -I tgf -O dot
+digraph {
+    clap [label="v4.5.57 clap"];
+    clap_builder [label="v4.5.57 clap_builder"];
+    anstream [label="v0.6.21 anstream"];
+    ...
+}
+```
+
+> [!NOTE]
+>
+> The `depfilter` tool shares the same GPL-2.0 license caveat as `depconv` with respect to
+> DOT parsing.
 
 ## can2csv
 
