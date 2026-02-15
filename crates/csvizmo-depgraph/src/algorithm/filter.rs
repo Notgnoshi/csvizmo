@@ -424,6 +424,65 @@ mod tests {
         assert_eq!(edge_pairs(&result), vec![("a", "c")]);
     }
 
+    // -- subgraphs --
+
+    #[test]
+    fn preserves_subgraph_structure() {
+        // root: a, subgraph: { b, c, b->c }, edge a->b at root
+        // filter a keeps b, c in subgraph with their edge
+        let g = make_graph(
+            &[("a", "a")],
+            &[("a", "b")],
+            vec![make_graph(&[("b", "b"), ("c", "c")], &[("b", "c")], vec![])],
+        );
+        let args = FilterArgs::default().pattern("a");
+        let result = filter(&g, &args).unwrap();
+        assert!(result.nodes.is_empty());
+        assert!(result.edges.is_empty());
+        assert_eq!(result.subgraphs.len(), 1);
+        assert_eq!(node_ids(&result.subgraphs[0]), vec!["b", "c"]);
+        assert_eq!(edge_pairs(&result.subgraphs[0]), vec![("b", "c")]);
+    }
+
+    // -- preserve connectivity + cascade --
+
+    #[test]
+    fn preserve_connectivity_with_deps_cascade() {
+        // a -> b -> c -> d: remove b with --deps --preserve-connectivity
+        // b, c, d removed; a survives with no edges (nothing to bypass to)
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
+            &[("a", "b"), ("b", "c"), ("c", "d")],
+            vec![],
+        );
+        let args = FilterArgs::default()
+            .pattern("b")
+            .deps()
+            .preserve_connectivity();
+        let result = filter(&g, &args).unwrap();
+        assert_eq!(node_ids(&result), vec!["a"]);
+        assert!(edge_pairs(&result).is_empty());
+    }
+
+    #[test]
+    fn preserve_connectivity_with_deps_cascade_bypass() {
+        // a -> b -> c, a -> d, d -> c: remove b with --deps --preserve-connectivity
+        // b, c removed (deps of b); a, d survive; a had edge to c via b, bypass a -> (nothing,
+        // c is removed). d -> c is also removed. Only a, d remain with no edges.
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
+            &[("a", "b"), ("b", "c"), ("a", "d"), ("d", "c")],
+            vec![],
+        );
+        let args = FilterArgs::default()
+            .pattern("b")
+            .deps()
+            .preserve_connectivity();
+        let result = filter(&g, &args).unwrap();
+        assert_eq!(node_ids(&result), vec!["a", "d"]);
+        assert_eq!(edge_pairs(&result), vec![("a", "d")]);
+    }
+
     // -- preserve connectivity with subgraphs --
 
     #[test]

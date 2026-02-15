@@ -305,6 +305,28 @@ fn filter_with_deps_and_ancestors() {
 }
 
 #[test]
+fn filter_by_id() {
+    let output = tool!("depfilter")
+        .args([
+            "filter",
+            "--pattern",
+            "1",
+            "--key",
+            "id",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(SIMPLE_GRAPH)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "2\tlibbar\n3\tmyapp\n#\n3\t2\n");
+}
+
+#[test]
 fn filter_with_preserve_connectivity() {
     let chain_graph = "a\nb\nc\n#\na\tb\nb\tc\n";
     let output = tool!("depfilter")

@@ -111,9 +111,13 @@ pub fn select(graph: &DepGraph, args: &SelectArgs) -> eyre::Result<DepGraph> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Edge, NodeInfo};
+    use crate::{DepGraph, Edge, NodeInfo};
 
-    fn make_graph(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> DepGraph {
+    fn make_graph(
+        nodes: &[(&str, &str)],
+        edges: &[(&str, &str)],
+        subgraphs: Vec<DepGraph>,
+    ) -> DepGraph {
         DepGraph {
             nodes: nodes
                 .iter()
@@ -127,6 +131,7 @@ mod tests {
                     ..Default::default()
                 })
                 .collect(),
+            subgraphs,
             ..Default::default()
         }
     }
@@ -159,6 +164,7 @@ mod tests {
                 ("myapp", "libbar"),
                 ("libfoo", "libbar"),
             ],
+            vec![],
         );
         let args = SelectArgs::default().pattern("lib*");
         let result = select(&g, &args).unwrap();
@@ -168,7 +174,7 @@ mod tests {
 
     #[test]
     fn match_by_id() {
-        let g = make_graph(&[("1", "libfoo"), ("2", "libbar")], &[("1", "2")]);
+        let g = make_graph(&[("1", "libfoo"), ("2", "libbar")], &[("1", "2")], vec![]);
         let args = SelectArgs::default().pattern("1").key(MatchKey::Id);
         let result = select(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["1"]);
@@ -176,7 +182,7 @@ mod tests {
 
     #[test]
     fn match_by_label() {
-        let g = make_graph(&[("1", "libfoo"), ("2", "libbar")], &[("1", "2")]);
+        let g = make_graph(&[("1", "libfoo"), ("2", "libbar")], &[("1", "2")], vec![]);
         let args = SelectArgs::default().pattern("libbar");
         let result = select(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["2"]);
@@ -187,6 +193,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c")],
+            vec![],
         );
         let args = SelectArgs::default().pattern("a").pattern("c");
         let result = select(&g, &args).unwrap();
@@ -203,6 +210,7 @@ mod tests {
                 ("libbar-alpha", "libbar-alpha"),
             ],
             &[],
+            vec![],
         );
         let args = SelectArgs::default()
             .pattern("libfoo*")
@@ -214,7 +222,7 @@ mod tests {
 
     #[test]
     fn no_match_produces_empty_graph() {
-        let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b")]);
+        let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b")], vec![]);
         let args = SelectArgs::default().pattern("nonexistent");
         let result = select(&g, &args).unwrap();
         assert!(result.nodes.is_empty());
@@ -229,6 +237,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c"), ("a", "c")],
+            vec![],
         );
         let args = SelectArgs::default().pattern("a").deps();
         let result = select(&g, &args).unwrap();
@@ -241,6 +250,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c")],
+            vec![],
         );
         let args = SelectArgs::default().pattern("c").ancestors();
         let result = select(&g, &args).unwrap();
@@ -253,6 +263,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("c", "d")],
+            vec![],
         );
         let args = SelectArgs::default().pattern("a").deps().depth(1);
         let result = select(&g, &args).unwrap();
@@ -266,6 +277,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("c", "d")],
+            vec![],
         );
         let args = SelectArgs::default().pattern("b").deps().ancestors();
         let result = select(&g, &args).unwrap();
@@ -282,6 +294,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d"), ("e", "e")],
             &[("a", "b"), ("b", "c"), ("c", "d"), ("d", "e")],
+            vec![],
         );
         let args = SelectArgs::default()
             .pattern("c")
@@ -299,6 +312,7 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("c", "d")],
+            vec![],
         );
         let args = SelectArgs::default().depth(2);
         let result = select(&g, &args).unwrap();
@@ -312,9 +326,28 @@ mod tests {
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "c"), ("b", "c")],
+            vec![],
         );
         let args = SelectArgs::default().depth(0);
         let result = select(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["a", "b"]);
+    }
+
+    // -- subgraphs --
+
+    #[test]
+    fn preserves_subgraph_structure() {
+        // root: a -> b, subgraph: { c }, edge b -> c at root
+        // select a with deps keeps all nodes and preserves subgraph
+        let g = make_graph(
+            &[("a", "a"), ("b", "b")],
+            &[("a", "b"), ("b", "c")],
+            vec![make_graph(&[("c", "c")], &[], vec![])],
+        );
+        let args = SelectArgs::default().pattern("a").deps();
+        let result = select(&g, &args).unwrap();
+        assert_eq!(node_ids(&result), vec!["a", "b"]);
+        assert_eq!(result.subgraphs.len(), 1);
+        assert_eq!(node_ids(&result.subgraphs[0]), vec!["c"]);
     }
 }
