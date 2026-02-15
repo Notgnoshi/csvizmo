@@ -42,6 +42,8 @@ struct Args {
 enum Command {
     /// Reverse the direction of all edges
     Reverse,
+    /// Remove redundant edges via transitive reduction
+    Simplify,
 }
 
 fn main() -> eyre::Result<()> {
@@ -89,6 +91,7 @@ fn main() -> eyre::Result<()> {
 
     let graph = match &args.command {
         Command::Reverse => algorithm::reverse::reverse(&graph),
+        Command::Simplify => algorithm::simplify::simplify(&graph)?,
     };
 
     let mut output = get_output_writer(&output_path)?;

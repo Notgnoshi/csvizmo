@@ -3,6 +3,7 @@ pub mod cycles;
 pub mod filter;
 pub mod reverse;
 pub mod select;
+pub mod simplify;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
