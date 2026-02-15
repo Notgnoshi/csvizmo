@@ -244,6 +244,8 @@ designed to be chained with pipes.
 
 * `depfilter select` keeps only nodes matching the given patterns
 * `depfilter filter` removes nodes matching the given patterns
+* `depfilter between` select nodes connecting multiple sets of query nodes
+* `depfilter cycles` select any cycles in the graph
 
 Both subcommands have extra options to tune their behavior.
 
