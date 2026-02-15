@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use csvizmo_depgraph::algorithm;
 use csvizmo_depgraph::algorithm::between::BetweenArgs;
+use csvizmo_depgraph::algorithm::cycles::CyclesArgs;
 use csvizmo_depgraph::algorithm::filter::FilterArgs;
 use csvizmo_depgraph::algorithm::select::SelectArgs;
 use csvizmo_depgraph::emit::OutputFormat;
@@ -49,6 +50,8 @@ enum Command {
     Filter(FilterArgs),
     /// Extract the subgraph of all directed paths between matched query nodes
     Between(BetweenArgs),
+    /// Detect cycles (strongly connected components) and output each as a subgraph
+    Cycles(CyclesArgs),
 }
 
 fn main() -> eyre::Result<()> {
@@ -98,6 +101,7 @@ fn main() -> eyre::Result<()> {
         Command::Select(select_args) => algorithm::select::select(&graph, select_args)?,
         Command::Filter(filter_args) => algorithm::filter::filter(&graph, filter_args)?,
         Command::Between(between_args) => algorithm::between::between(&graph, between_args)?,
+        Command::Cycles(cycles_args) => algorithm::cycles::cycles(&graph, cycles_args)?,
     };
 
     let mut output = get_output_writer(&output_path)?;

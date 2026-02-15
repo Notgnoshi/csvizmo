@@ -613,3 +613,160 @@ csvizmo-utils_0.5.0\tclap_4.5.57
 "
     );
 }
+
+// -- cycles integration tests --
+
+#[test]
+fn cycles_dag_no_cycles() {
+    // a -> b -> c: no cycles, empty output
+    let graph = "a\nb\nc\n#\na\tb\nb\tc\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "tgf"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+fn cycles_simple_three_node() {
+    // a -> b -> c -> a: single cycle with all three nodes
+    let graph = "a\nb\nc\n#\na\tb\nb\tc\nc\ta\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_cycle_0 {
+        label=\"cycle_0\";
+        a;
+        b;
+        c;
+        a -> b;
+        b -> c;
+        c -> a;
+    }
+}
+"
+    );
+}
+
+#[test]
+fn cycles_multiple_disjoint() {
+    // cycle1: a <-> b, cycle2: c <-> d (no edges between them)
+    let graph = "a\nb\nc\nd\n#\na\tb\nb\ta\nc\td\nd\tc\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Both cycles appear as separate subgraphs, no cross-cycle edges.
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_cycle_0 {
+        label=\"cycle_0\";
+        a;
+        b;
+        a -> b;
+        b -> a;
+    }
+    subgraph cluster_cycle_1 {
+        label=\"cycle_1\";
+        c;
+        d;
+        c -> d;
+        d -> c;
+    }
+}
+"
+    );
+}
+
+#[test]
+fn cycles_mixed_graph_excludes_acyclic() {
+    // x -> a <-> b -> y: only a and b form a cycle; x and y excluded
+    let graph = "x\na\nb\ny\n#\nx\ta\na\tb\nb\ta\nb\ty\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_cycle_0 {
+        label=\"cycle_0\";
+        a;
+        b;
+        a -> b;
+        b -> a;
+    }
+}
+"
+    );
+}
+
+#[test]
+fn cycles_cross_cycle_edges_at_top_level() {
+    // cycle1: a <-> b, cycle2: c <-> d, cross-edge: b -> c
+    let graph = "a\nb\nc\nd\n#\na\tb\nb\ta\nc\td\nd\tc\nb\tc\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // tarjan_scc returns SCCs in reverse topological order: c,d before a,b
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_cycle_0 {
+        label=\"cycle_0\";
+        c;
+        d;
+        c -> d;
+        d -> c;
+    }
+    subgraph cluster_cycle_1 {
+        label=\"cycle_1\";
+        a;
+        b;
+        a -> b;
+        b -> a;
+    }
+    b -> c;
+}
+"
+    );
+}
+
+#[test]
+fn cycles_self_loop_ignored() {
+    // a -> a: self-loop is not a cycle (SCC size 1)
+    let graph = "a\n#\na\ta\n";
+    let output = tool!("depfilter")
+        .args(["cycles", "--input-format", "tgf", "--output-format", "tgf"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
