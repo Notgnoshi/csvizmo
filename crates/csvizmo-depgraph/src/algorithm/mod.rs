@@ -1,6 +1,7 @@
 pub mod between;
 pub mod cycles;
 pub mod filter;
+pub mod reverse;
 pub mod select;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
