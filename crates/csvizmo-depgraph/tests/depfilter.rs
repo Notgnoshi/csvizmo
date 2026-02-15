@@ -452,3 +452,164 @@ digraph {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, "2\tlibbar\n3\tmyapp\n#\n3\t2\n");
 }
+
+// -- between integration tests --
+
+#[test]
+fn between_two_nodes() {
+    // a -> b -> c: between a and c includes intermediate b
+    let graph = "a\nb\nc\n#\na\tb\nb\tc\n";
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "a",
+            "-p",
+            "c",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nc\n#\na\tb\nb\tc\n");
+}
+
+#[test]
+fn between_by_id() {
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "1",
+            "-p",
+            "2",
+            "--key",
+            "id",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(SIMPLE_GRAPH)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "1\tlibfoo\n2\tlibbar\n#\n1\t2\n");
+}
+
+#[test]
+fn between_glob_multiple_nodes() {
+    // a -> b -> c: glob "?" matches all three, paths exist between all pairs
+    let graph = "a\nb\nc\n#\na\tb\nb\tc\n";
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "?",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nc\n#\na\tb\nb\tc\n");
+}
+
+#[test]
+fn between_no_matching_patterns() {
+    let graph = "a\nb\n#\na\tb\n";
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "nonexistent",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+fn between_no_path() {
+    // a -> b, c -> d: no path between a and c
+    let graph = "a\nb\nc\nd\n#\na\tb\nc\td\n";
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "a",
+            "-p",
+            "c",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[test]
+fn between_cargo_metadata_fixture() {
+    // Use the real cargo-metadata.json fixture to test between on a non-trivial graph.
+    // csvizmo-depgraph depends on clap both directly and via csvizmo-utils,
+    // so csvizmo-utils is an intermediate node on a path to clap.
+    // clap in turn depends on clap_builder, clap_derive, and clap_builder -> clap_lex.
+    let input = include_str!("../../../data/depconv/cargo-metadata.json");
+    let output = tool!("depfilter")
+        .args([
+            "between",
+            "-p",
+            "csvizmo-depgraph",
+            "-p",
+            "clap*",
+            "--input-format",
+            "cargo-metadata",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+clap_4.5.57\tclap
+clap_builder_4.5.57\tclap_builder
+clap_derive_4.5.55\tclap_derive
+clap_lex_0.7.7\tclap_lex
+csvizmo-depgraph_0.5.0\tcsvizmo-depgraph
+csvizmo-utils_0.5.0\tcsvizmo-utils
+#
+clap_4.5.57\tclap_builder_4.5.57
+clap_4.5.57\tclap_derive_4.5.55
+clap_builder_4.5.57\tclap_lex_0.7.7
+csvizmo-depgraph_0.5.0\tclap_4.5.57
+csvizmo-depgraph_0.5.0\tcsvizmo-utils_0.5.0
+csvizmo-utils_0.5.0\tclap_4.5.57
+"
+    );
+}
