@@ -69,6 +69,12 @@ pub fn select(graph: &DepGraph, args: &SelectArgs) -> eyre::Result<DepGraph> {
     let globset = build_globset(&args.pattern)?;
     let view = FlatGraphView::new(graph);
 
+    // No filters at all -> pass through the entire graph unchanged.
+    let no_traversal = !args.deps && !args.ancestors && args.depth.is_none();
+    if args.pattern.is_empty() && no_traversal {
+        return Ok(graph.clone());
+    }
+
     // If no patterns given, seed from root nodes; otherwise match by pattern.
     let mut keep: HashSet<_> = if args.pattern.is_empty() {
         view.roots().collect()
@@ -304,6 +310,22 @@ mod tests {
         let result = select(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["b", "c", "d"]);
         assert_eq!(edge_pairs(&result), vec![("b", "c"), ("c", "d")]);
+    }
+
+    #[test]
+    fn no_args_returns_full_graph() {
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
+            &[("a", "b"), ("b", "c"), ("c", "d")],
+            vec![],
+        );
+        let args = SelectArgs::default();
+        let result = select(&g, &args).unwrap();
+        assert_eq!(node_ids(&result), vec!["a", "b", "c", "d"]);
+        assert_eq!(
+            edge_pairs(&result),
+            vec![("a", "b"), ("b", "c"), ("c", "d")]
+        );
     }
 
     #[test]
