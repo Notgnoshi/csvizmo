@@ -146,3 +146,83 @@ fn simplify_errors_on_cycle() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("cycles"), "stderr: {stderr}");
 }
+
+// -- shorten integration tests --
+
+#[test]
+fn shorten_default_strips_common_prefix() {
+    // Nodes share common prefix "src/foo/" -- defaults strip it
+    let graph = "src/foo/bar.rs\nsrc/foo/baz.rs\n#\nsrc/foo/bar.rs\tsrc/foo/baz.rs\n";
+    let output = tool!("deptransform")
+        .args(["shorten", "--input-format", "tgf", "--output-format", "tgf"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "bar.rs\nbaz.rs\n#\nbar.rs\tbaz.rs\n");
+}
+
+#[test]
+fn shorten_dot_separator() {
+    let graph = "com.example.foo\ncom.example.bar\n#\ncom.example.foo\tcom.example.bar\n";
+    let output = tool!("deptransform")
+        .args([
+            "shorten",
+            "--separator",
+            ".",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "foo\nbar\n#\nfoo\tbar\n");
+}
+
+#[test]
+fn shorten_id_only() {
+    // --key id: shorten IDs but leave labels untouched
+    let graph = "src/foo/bar.rs\tOriginal\nsrc/foo/baz.rs\tOther\n#\n";
+    let output = tool!("deptransform")
+        .args([
+            "shorten",
+            "--key",
+            "id",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "bar.rs\tOriginal\nbaz.rs\tOther\n#\n");
+}
+
+#[test]
+fn shorten_single_letter() {
+    // Explicit --single-letter overrides defaults
+    let graph = "src/foo/bar.rs\n#\n";
+    let output = tool!("deptransform")
+        .args([
+            "shorten",
+            "--single-letter",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "s/f/bar.rs\n#\n");
+}

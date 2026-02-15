@@ -18,6 +18,7 @@ either = { workspace = true, optional = true }
 eyre.workspace = true
 globset.workspace = true
 indexmap.workspace = true
+csvizmo-minpath.workspace = true
 petgraph.workspace = true
 mermaid-rs-renderer.workspace = true
 serde.workspace = true

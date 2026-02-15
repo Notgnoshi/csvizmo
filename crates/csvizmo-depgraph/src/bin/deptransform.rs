@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use csvizmo_depgraph::algorithm;
+use csvizmo_depgraph::algorithm::shorten::ShortenArgs;
 use csvizmo_depgraph::emit::OutputFormat;
 use csvizmo_depgraph::parse::InputFormat;
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
@@ -44,6 +45,8 @@ enum Command {
     Reverse,
     /// Remove redundant edges via transitive reduction
     Simplify,
+    /// Shorten node IDs and/or labels using path transforms
+    Shorten(ShortenArgs),
 }
 
 fn main() -> eyre::Result<()> {
@@ -92,6 +95,15 @@ fn main() -> eyre::Result<()> {
     let graph = match &args.command {
         Command::Reverse => algorithm::reverse::reverse(&graph),
         Command::Simplify => algorithm::simplify::simplify(&graph)?,
+        Command::Shorten(shorten_args) => {
+            let transforms = algorithm::shorten::build_transforms(shorten_args);
+            algorithm::shorten::shorten(
+                &graph,
+                &shorten_args.separator,
+                shorten_args.key,
+                &transforms,
+            )
+        }
     };
 
     let mut output = get_output_writer(&output_path)?;
