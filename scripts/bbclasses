@@ -116,6 +116,47 @@ def preprocess(text):
     return joined.replace("\\\n", " ")
 
 
+def build_class_lookup(inherit_cache):
+    """Build a dict mapping bare class names to full paths.
+
+    e.g. {"native": "/path/to/meta/classes/native.bbclass", ...}
+    """
+    lookup = {}
+    for path in inherit_cache:
+        basename = os.path.basename(path)
+        name = basename.removesuffix(".bbclass")
+        lookup[name] = path
+    return lookup
+
+
+def resolve_inherit(name, class_lookup):
+    """Resolve an inherit class name to its full path, or None."""
+    if "$" in name:
+        # TODO: variable expansion
+        logging.debug("Skipping variable reference in inherit: %s", name)
+        return None
+    result = class_lookup.get(name)
+    if result is None:
+        logging.debug("Could not resolve inherit: %s", name)
+    return result
+
+
+def resolve_include(ref, nodes):
+    """Resolve a require/include path to a node in the set by suffix match, or None."""
+    if "$" in ref:
+        # TODO: variable expansion
+        logging.debug("Skipping variable reference in include: %s", ref)
+        return None
+    matches = [n for n in nodes if n.endswith("/" + ref) or n == ref]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        logging.debug("Ambiguous include ref '%s', matched %d nodes", ref, len(matches))
+    else:
+        logging.debug("Could not resolve include: %s", ref)
+    return None
+
+
 def discover_edges(nodes, inherit_cache, depends):
     """Given a set of nodes, discover edges by parsing the files for directives."""
     edges = []
