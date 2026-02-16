@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""Generate a Mermaid dependency graph of all files involved in building a BitBake recipe.
+
+Uses bb.tinfoil to parse the recipe and discover nodes (files), then manually parses
+those files to discover edges (inherit/require/include relationships).
+"""
+
+import argparse
+import logging
+import os
+import re
+import sys
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "recipe",
+        help="Recipe name (e.g. 'gzip') or path to a .bb file",
+    )
+    parser.add_argument(
+        "--no-filter-base",
+        action="store_true",
+        help="Disable filtering of base BitBake infrastructure noise",
+    )
+    parser.add_argument(
+        "--group-by-layer",
+        action="store_true",
+        help="Group files into Mermaid subgraphs by meta-layer",
+    )
+    parser.add_argument(
+        "--log-level",
+        "-l",
+        type=str,
+        default="DEBUG",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging output level. Defaults to INFO.",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default=None,
+        help="Output file. Default: stdout",
+    )
+    return parser.parse_args()
+
+
+def parse_recipe(tinfoil, recipe):
+    """Parse a recipe by name or path, returning its datastore."""
+    if os.path.exists(recipe):
+        logging.info("Parsing recipe file: %s", recipe)
+        d = tinfoil.parse_recipe_file(recipe)
+    else:
+        logging.info("Parsing recipe: %s", recipe)
+        d = tinfoil.parse_recipe(recipe)
+    if d is None:
+        sys.exit(f"Failed to parse recipe: {recipe}")
+    return d
+
+
+def discover_nodes(tinfoil, d):
+    """Collect the set of all files involved in a recipe from the datastore."""
+    recipe_file = d.getVar("FILE")
+    logging.info("Recipe file: %s", recipe_file)
+
+    inherit_cache = d.getVar("__inherit_cache") or []
+    logging.info("Found %d inherited bbclasses", len(inherit_cache))
+    for path in inherit_cache:
+        logging.debug("  bbclass: %s", path)
+
+    depends = d.getVar("__depends") or []
+    dep_files = [
+        filepath
+        for filepath, _mtime in depends
+        if any(filepath.endswith(ext) for ext in (".bb", ".inc", ".bbappend"))
+    ]
+    logging.info("Found %d file dependencies", len(dep_files))
+    for path in dep_files:
+        logging.debug("  dep: %s", path)
+
+    appends = tinfoil.get_file_appends(recipe_file)
+    logging.info("Found %d appends", len(appends))
+    for path in appends:
+        logging.debug("  append: %s", path)
+
+    nodes = {recipe_file}
+    nodes.update(inherit_cache)
+    nodes.update(dep_files)
+    nodes.update(appends)
+    logging.info("Total node count: %d", len(nodes))
+    return nodes, recipe_file, inherit_cache, appends
+
+
+BASE_FILTER_BASENAMES = {
+    "base.bbclass",
+    "bblayers.conf",
+    "bitbake.conf",
+    "documentation.bbclass",
+    "insane.bbclass",
+    "license.bbclass",
+    "local.conf",
+    "logging.bbclass",
+    "metadata_scm.bbclass",
+    "mirrors.bbclass",
+    "patch.bbclass",
+    "sanity.conf",
+    "sstate.bbclass",
+    "staging.bbclass",
+    "utility-tasks.bbclass",
+}
+
+
+def filter_base_infrastructure(nodes):
+    """Remove base BitBake infrastructure files that add noise to the graph."""
+    filtered = set()
+    for path in nodes:
+        basename = os.path.basename(path)
+        if basename in BASE_FILTER_BASENAMES:
+            logging.debug("Filtering base infrastructure: %s", path)
+            continue
+        if path.endswith(".conf"):
+            logging.debug("Filtering conf file: %s", path)
+            continue
+        filtered.add(path)
+    return filtered
+
+
+# Mermaid output helpers
+
+_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_.\-]")
+
+
+def sanitize_mermaid_id(path):
+    """Convert a file path into a valid Mermaid node ID."""
+    node_id = _SANITIZE_RE.sub("_", path)
+    if node_id and node_id[0].isdigit():
+        node_id = "_" + node_id
+    return node_id
+
+
+def escape_label(text):
+    """Escape a label for use inside Mermaid quoted strings."""
+    return text.replace("&", "&amp;").replace('"', "&quot;")
+
+
+def minimal_unique_labels(paths):
+    """Compute the shortest unique path suffix for each file path.
+
+    Returns a dict mapping each full path to its minimal label.
+    """
+    # Split each path into components (reversed for suffix matching)
+    split = {p: p.split("/") for p in paths}
+
+    labels = {}
+    for path, parts in split.items():
+        # Start with just the filename, extend until unique
+        for n in range(1, len(parts) + 1):
+            candidate = "/".join(parts[-n:])
+            conflicts = [
+                other
+                for other, oparts in split.items()
+                if other != path and "/".join(oparts[-n:]) == candidate
+            ]
+            if not conflicts:
+                labels[path] = candidate
+                break
+        else:
+            labels[path] = path
+    return labels
+
+
+def node_shape(path, label):
+    """Return the Mermaid node definition with the appropriate shape."""
+    escaped = escape_label(label)
+    if path.endswith(".bb"):
+        return f'["{escaped}"]'
+    elif path.endswith(".bbclass"):
+        return f'{{{{"{escaped}"}}}}'
+    elif path.endswith(".bbappend"):
+        return f'(["{escaped}"])'
+    elif path.endswith(".inc"):
+        return f'[["{escaped}"]]'
+    else:
+        return f'["{escaped}"]'
+
+
+def emit_mermaid(nodes, edges, out):
+    """Write a Mermaid flowchart to the given file object."""
+    labels = minimal_unique_labels(nodes)
+
+    out.write("flowchart TB\n")
+    for path in sorted(nodes):
+        node_id = sanitize_mermaid_id(path)
+        shape = node_shape(path, labels[path])
+        out.write(f"    {node_id}{shape}\n")
+
+    for source, target, edge_type in sorted(edges):
+        src_id = sanitize_mermaid_id(source)
+        tgt_id = sanitize_mermaid_id(target)
+        escaped_type = escape_label(edge_type)
+        out.write(f'    {src_id} -->|"{escaped_type}"| {tgt_id}\n')
+
+
+def main(args):
+    try:
+        import bb.tinfoil
+    except ImportError:
+        sys.exit(
+            "Could not import bb.tinfoil. "
+            "Make sure you have sourced the OE build environment "
+            "(e.g. 'source oe-init-build-env')."
+        )
+
+    with bb.tinfoil.Tinfoil() as tinfoil:
+        tinfoil.prepare(config_only=False)
+        d = parse_recipe(tinfoil, args.recipe)
+        nodes, recipe_file, inherit_cache, appends = discover_nodes(tinfoil, d)
+
+    if not args.no_filter_base:
+        nodes = filter_base_infrastructure(nodes)
+
+    edges = []  # TODO: discover_edges()
+
+    if args.output:
+        with open(args.output, "w") as f:
+            emit_mermaid(nodes, edges, f)
+        logging.info("Wrote output to %s", args.output)
+    else:
+        emit_mermaid(nodes, edges, sys.stdout)
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    fmt = "%(asctime)s %(module)s %(levelname)s: %(message)s"
+    logging.basicConfig(
+        format=fmt,
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+        level=args.log_level,
+        stream=sys.stderr,
+    )
+    try:
+        import coloredlogs
+
+        coloredlogs.install(fmt=fmt, level=args.log_level, datefmt="%Y-%m-%dT%H:%M:%S%z")
+    except ImportError:
+        pass
+    main(args)
