@@ -175,14 +175,14 @@ def scan_file(source, nodes, class_lookup):
         for name in match.group(2).split():
             target = resolve_inherit(name, class_lookup)
             if target and target in nodes:
-                edges.append((source, target, edge_type))
+                edges.append((target, source, edge_type))
 
     for match in REQUIRE_INCLUDE_RE.finditer(text):
         edge_type = match.group(1)
         ref = match.group(2)
         target = resolve_include(ref, nodes)
         if target:
-            edges.append((source, target, edge_type))
+            edges.append((target, source, edge_type))
 
     return edges
 
@@ -206,7 +206,7 @@ def discover_edges(nodes, recipe_file, inherit_cache, depends, appends):
     # Synthetic appends edges
     for append in appends:
         if append in nodes:
-            edges.append((append, recipe_file, "appends"))
+            edges.append((recipe_file, append, "appends"))
 
     return edges
 
@@ -223,7 +223,7 @@ BASE_FILTER_BASENAMES = {
     "metadata_scm.bbclass",
     "mirrors.bbclass",
     "patch.bbclass",
-    "sanity.conf",
+    "sanity.bbclass",
     "sstate.bbclass",
     "staging.bbclass",
     "utility-tasks.bbclass",
