@@ -86,12 +86,16 @@ def discover_nodes(tinfoil, d):
     for path in appends:
         logging.debug("  append: %s", path)
 
+    bblayers = (d.getVar("BBLAYERS") or "").split()
+    common_prefix = os.path.commonpath(bblayers) + "/" if bblayers else "/"
+    logging.info("Common layer prefix: %s", common_prefix)
+
     nodes = {recipe_file}
     nodes.update(inherit_cache)
     nodes.update(dep_files)
     nodes.update(appends)
     logging.info("Total node count: %d", len(nodes))
-    return nodes, recipe_file, inherit_cache, appends
+    return nodes, recipe_file, inherit_cache, appends, common_prefix
 
 
 BASE_FILTER_BASENAMES = {
@@ -130,7 +134,7 @@ def filter_base_infrastructure(nodes):
 
 # Mermaid output helpers
 
-_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_.\-]")
+_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_./\-]")
 
 
 def sanitize_mermaid_id(path):
@@ -146,30 +150,11 @@ def escape_label(text):
     return text.replace("&", "&amp;").replace('"', "&quot;")
 
 
-def minimal_unique_labels(paths):
-    """Compute the shortest unique path suffix for each file path.
-
-    Returns a dict mapping each full path to its minimal label.
-    """
-    # Split each path into components (reversed for suffix matching)
-    split = {p: p.split("/") for p in paths}
-
-    labels = {}
-    for path, parts in split.items():
-        # Start with just the filename, extend until unique
-        for n in range(1, len(parts) + 1):
-            candidate = "/".join(parts[-n:])
-            conflicts = [
-                other
-                for other, oparts in split.items()
-                if other != path and "/".join(oparts[-n:]) == candidate
-            ]
-            if not conflicts:
-                labels[path] = candidate
-                break
-        else:
-            labels[path] = path
-    return labels
+def strip_prefix(path, prefix):
+    """Strip a common prefix from a path, returning the relative remainder."""
+    if path.startswith(prefix):
+        return path[len(prefix):]
+    return path
 
 
 def node_shape(path, label):
@@ -187,19 +172,18 @@ def node_shape(path, label):
         return f'["{escaped}"]'
 
 
-def emit_mermaid(nodes, edges, out):
+def emit_mermaid(nodes, edges, common_prefix, out):
     """Write a Mermaid flowchart to the given file object."""
-    labels = minimal_unique_labels(nodes)
-
     out.write("flowchart TB\n")
     for path in sorted(nodes):
+        path = strip_prefix(path, common_prefix)
         node_id = sanitize_mermaid_id(path)
-        shape = node_shape(path, labels[path])
+        shape = node_shape(path, label=path)
         out.write(f"    {node_id}{shape}\n")
 
     for source, target, edge_type in sorted(edges):
-        src_id = sanitize_mermaid_id(source)
-        tgt_id = sanitize_mermaid_id(target)
+        src_id = sanitize_mermaid_id(strip_prefix(source, common_prefix))
+        tgt_id = sanitize_mermaid_id(strip_prefix(target, common_prefix))
         escaped_type = escape_label(edge_type)
         out.write(f'    {src_id} -->|"{escaped_type}"| {tgt_id}\n')
 
@@ -217,7 +201,9 @@ def main(args):
     with bb.tinfoil.Tinfoil() as tinfoil:
         tinfoil.prepare(config_only=False)
         d = parse_recipe(tinfoil, args.recipe)
-        nodes, recipe_file, inherit_cache, appends = discover_nodes(tinfoil, d)
+        nodes, recipe_file, inherit_cache, appends, common_prefix = discover_nodes(
+            tinfoil, d
+        )
 
     if not args.no_filter_base:
         nodes = filter_base_infrastructure(nodes)
@@ -226,10 +212,10 @@ def main(args):
 
     if args.output:
         with open(args.output, "w") as f:
-            emit_mermaid(nodes, edges, f)
+            emit_mermaid(nodes, edges, common_prefix, f)
         logging.info("Wrote output to %s", args.output)
     else:
-        emit_mermaid(nodes, edges, sys.stdout)
+        emit_mermaid(nodes, edges, common_prefix, sys.stdout)
 
 
 if __name__ == "__main__":
