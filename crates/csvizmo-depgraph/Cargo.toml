@@ -34,3 +34,4 @@ dot = ["dep:dot-parser", "dep:either"]
 [dev-dependencies]
 csvizmo-test.workspace = true
 pretty_assertions.workspace = true
+tempfile.workspace = true

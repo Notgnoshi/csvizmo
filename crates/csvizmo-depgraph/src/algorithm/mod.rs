@@ -1,6 +1,7 @@
 pub mod between;
 pub mod cycles;
 pub mod filter;
+pub mod merge;
 pub mod reverse;
 pub mod select;
 pub mod shorten;

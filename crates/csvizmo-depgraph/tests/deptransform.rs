@@ -1,5 +1,8 @@
+use std::io::Write;
+
 use csvizmo_test::{CommandExt, tool};
 use pretty_assertions::assert_eq;
+use tempfile::NamedTempFile;
 
 // -- reverse integration tests --
 
@@ -371,4 +374,221 @@ fn sub_invalid_expr() {
         .captured_output()
         .unwrap();
     assert!(!output.status.success());
+}
+
+// -- merge integration tests --
+
+#[test]
+fn merge_two_files() {
+    let mut f1 = NamedTempFile::new().unwrap();
+    write!(f1, "a\nb\n#\na\tb\n").unwrap();
+
+    let mut f2 = NamedTempFile::new().unwrap();
+    write!(f2, "c\nd\n#\nc\td\n").unwrap();
+
+    let output = tool!("deptransform")
+        .args(["merge", "--output-format", "tgf", "--input-format", "tgf"])
+        .arg(f1.path())
+        .arg(f2.path())
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nc\nd\n#\na\tb\nc\td\n");
+}
+
+#[test]
+fn merge_overlapping_nodes() {
+    let mut f1 = NamedTempFile::new().unwrap();
+    write!(f1, "a\tFirst\nb\n#\na\tb\n").unwrap();
+
+    let mut f2 = NamedTempFile::new().unwrap();
+    write!(f2, "a\tSecond\nc\n#\na\tc\n").unwrap();
+
+    let output = tool!("deptransform")
+        .args(["merge", "--output-format", "tgf", "--input-format", "tgf"])
+        .arg(f1.path())
+        .arg(f2.path())
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Later file overwrites node "a" label; edges unioned
+    assert_eq!(stdout, "a\tSecond\nb\nc\n#\na\tb\na\tc\n");
+}
+
+#[test]
+fn merge_deduplicates_edges() {
+    let mut f1 = NamedTempFile::new().unwrap();
+    write!(f1, "a\nb\n#\na\tb\n").unwrap();
+
+    let mut f2 = NamedTempFile::new().unwrap();
+    write!(f2, "a\nb\n#\na\tb\n").unwrap();
+
+    let output = tool!("deptransform")
+        .args(["merge", "--output-format", "tgf", "--input-format", "tgf"])
+        .arg(f1.path())
+        .arg(f2.path())
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\n#\na\tb\n");
+}
+
+#[test]
+fn merge_with_stdin() {
+    let mut f1 = NamedTempFile::new().unwrap();
+    write!(f1, "a\nb\n#\na\tb\n").unwrap();
+
+    let output = tool!("deptransform")
+        .args(["merge", "--output-format", "tgf", "--input-format", "tgf"])
+        .arg(f1.path())
+        .arg("-")
+        .write_stdin("c\nd\n#\nc\td\n")
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nc\nd\n#\na\tb\nc\td\n");
+}
+
+#[test]
+fn merge_input_flag_included() {
+    let mut f1 = NamedTempFile::new().unwrap();
+    write!(f1, "a\nb\n#\na\tb\n").unwrap();
+
+    let mut f2 = NamedTempFile::new().unwrap();
+    write!(f2, "c\nd\n#\nc\td\n").unwrap();
+
+    // --input provides the first file, positional provides the second
+    let output = tool!("deptransform")
+        .args(["--input-format", "tgf", "--output-format", "tgf", "-i"])
+        .arg(f1.path())
+        .arg("merge")
+        .arg(f2.path())
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nc\nd\n#\na\tb\nc\td\n");
+}
+
+#[test]
+fn merge_requires_two_files() {
+    let mut f1 = NamedTempFile::new().unwrap();
+    write!(f1, "a\n#\n").unwrap();
+
+    let output = tool!("deptransform")
+        .args(["merge", "--input-format", "tgf", "--output-format", "tgf"])
+        .arg(f1.path())
+        .captured_output()
+        .unwrap();
+    assert!(!output.status.success());
+}
+
+#[test]
+fn merge_preserves_subgraphs() {
+    let mut f1 = NamedTempFile::new().unwrap();
+    write!(
+        f1,
+        "\
+digraph {{
+    subgraph cluster_0 {{
+        a;
+        b;
+        a -> b;
+    }}
+    c;
+    b -> c;
+}}
+"
+    )
+    .unwrap();
+
+    let mut f2 = NamedTempFile::new().unwrap();
+    write!(
+        f2,
+        "\
+digraph {{
+    d;
+    c -> d;
+}}
+"
+    )
+    .unwrap();
+
+    let output = tool!("deptransform")
+        .args(["merge", "--input-format", "dot", "--output-format", "dot"])
+        .arg(f1.path())
+        .arg(f2.path())
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_0 {
+        a;
+        b;
+        a -> b;
+    }
+    c;
+    d;
+    b -> c;
+    c -> d;
+}
+"
+    );
+}
+
+// -- flatten integration tests --
+
+#[test]
+fn flatten_removes_subgraphs() {
+    let graph = "\
+digraph {
+    subgraph cluster_0 {
+        a;
+        b;
+        a -> b;
+    }
+    c;
+    b -> c;
+}
+";
+    let output = tool!("deptransform")
+        .args(["flatten", "--input-format", "dot", "--output-format", "dot"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    c;
+    a;
+    b;
+    b -> c;
+    a -> b;
+}
+"
+    );
+}
+
+#[test]
+fn flatten_no_subgraphs_unchanged() {
+    let graph = "a\nb\n#\na\tb\n";
+    let output = tool!("deptransform")
+        .args(["flatten", "--input-format", "tgf", "--output-format", "tgf"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\n#\na\tb\n");
 }

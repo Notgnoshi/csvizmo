@@ -2,11 +2,11 @@ use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use csvizmo_depgraph::algorithm;
 use csvizmo_depgraph::algorithm::shorten::ShortenArgs;
 use csvizmo_depgraph::algorithm::sub::{SubKey, Substitution};
 use csvizmo_depgraph::emit::OutputFormat;
 use csvizmo_depgraph::parse::InputFormat;
+use csvizmo_depgraph::{DepGraph, algorithm};
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
 
 /// Arguments for the `sub` subcommand.
@@ -21,6 +21,15 @@ struct SubArgs {
     /// Field to apply substitution to: id, node:NAME, or edge:NAME
     #[clap(long, default_value = "id")]
     key: String,
+}
+
+/// Arguments for the `merge` subcommand.
+#[derive(Debug, clap::Parser)]
+struct MergeArgs {
+    /// Input files to merge (use '-' for stdin, at most once).
+    /// The global --input/-i flag, if set, is included as an additional file.
+    #[clap(required = true)]
+    files: Vec<PathBuf>,
 }
 
 /// Structural transformations on dependency graphs.
@@ -67,6 +76,12 @@ enum Command {
     /// Uses Rust regex syntax: (...) for capture groups, $1/${name} in replacement.
     /// When applied to node IDs, nodes that map to the same ID are merged.
     Sub(SubArgs),
+    /// Merge multiple graphs into one
+    ///
+    /// Nodes are unioned by ID (later files overwrite on collision).
+    /// Edges are deduplicated by (from, to); first label wins, attributes are merged.
+    /// The global --input/-i flag, if set, is included as the first file.
+    Merge(MergeArgs),
 }
 
 fn main() -> eyre::Result<()> {
@@ -89,45 +104,55 @@ fn main() -> eyre::Result<()> {
 
     // Normalize `-` to None -- it means stdio, not a file path.
     let is_stdio = |p: &PathBuf| p.as_os_str() == "-";
-    let input_path = args.input.filter(|p| !is_stdio(p));
     let output_path = args.output.filter(|p| !is_stdio(p));
-
-    let mut input = get_input_reader(&input_path)?;
-    let mut input_text = String::new();
-    input.read_to_string(&mut input_text)?;
-
-    let input_format = csvizmo_depgraph::parse::resolve_input_format(
-        args.input_format,
-        input_path.as_deref(),
-        &input_text,
-    )?;
     let output_format =
         csvizmo_depgraph::emit::resolve_output_format(args.output_format, output_path.as_deref())?;
 
-    let graph = csvizmo_depgraph::parse::parse(input_format, &input_text)?;
-    tracing::info!(
-        "Parsed graph with {} nodes, {} edges, and {} subgraphs",
-        graph.all_nodes().len(),
-        graph.all_edges().len(),
-        graph.subgraphs.len()
-    );
-
     let graph = match &args.command {
-        Command::Reverse => algorithm::reverse::reverse(&graph),
-        Command::Simplify => algorithm::simplify::simplify(&graph)?,
-        Command::Shorten(shorten_args) => {
-            let transforms = algorithm::shorten::build_transforms(shorten_args);
-            algorithm::shorten::shorten(
-                &graph,
-                &shorten_args.separator,
-                shorten_args.key,
-                &transforms,
-            )
+        // Merge can't handle the same input handling as the rest of the commands
+        Command::Merge(merge_args) => {
+            let mut files = Vec::new();
+            if let Some(input) = &args.input {
+                files.push(input);
+            }
+            files.extend(&merge_args.files);
+            if files.len() < 2 {
+                eyre::bail!("merge requires at least 2 input files");
+            }
+            let mut graphs = Vec::new();
+            for file in &files {
+                graphs.push(read_graph(Some(file), args.input_format)?);
+            }
+            algorithm::merge::merge(&graphs)
         }
-        Command::Sub(sub_args) => {
-            let substitution = Substitution::parse(&sub_args.expr)?;
-            let key = SubKey::parse(&sub_args.key)?;
-            algorithm::sub::sub(&graph, &substitution, &key)
+        command => {
+            let graph = read_graph(args.input.as_ref(), args.input_format)?;
+            tracing::info!(
+                "Parsed graph with {} nodes, {} edges, and {} subgraphs",
+                graph.all_nodes().len(),
+                graph.all_edges().len(),
+                graph.subgraphs.len()
+            );
+
+            match command {
+                Command::Reverse => algorithm::reverse::reverse(&graph),
+                Command::Simplify => algorithm::simplify::simplify(&graph)?,
+                Command::Shorten(shorten_args) => {
+                    let transforms = algorithm::shorten::build_transforms(shorten_args);
+                    algorithm::shorten::shorten(
+                        &graph,
+                        &shorten_args.separator,
+                        shorten_args.key,
+                        &transforms,
+                    )
+                }
+                Command::Sub(sub_args) => {
+                    let substitution = Substitution::parse(&sub_args.expr)?;
+                    let key = SubKey::parse(&sub_args.key)?;
+                    algorithm::sub::sub(&graph, &substitution, &key)
+                }
+                Command::Merge(_) => unreachable!(),
+            }
         }
     };
 
@@ -135,4 +160,16 @@ fn main() -> eyre::Result<()> {
     csvizmo_depgraph::emit::emit(output_format, &graph, &mut output)?;
 
     Ok(())
+}
+
+/// Read and parse a graph from a file path (or stdin if None / "-").
+fn read_graph(path: Option<&PathBuf>, input_format: Option<InputFormat>) -> eyre::Result<DepGraph> {
+    let is_stdio = |p: &PathBuf| p.as_os_str() == "-";
+    let file_path: Option<PathBuf> = path.filter(|p| !is_stdio(p)).cloned();
+    let mut reader = get_input_reader(&file_path)?;
+    let mut text = String::new();
+    reader.read_to_string(&mut text)?;
+    let fmt =
+        csvizmo_depgraph::parse::resolve_input_format(input_format, file_path.as_deref(), &text)?;
+    csvizmo_depgraph::parse::parse(fmt, &text)
 }
