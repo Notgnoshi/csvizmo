@@ -270,6 +270,33 @@ digraph {
 > The `depfilter` tool shares the same GPL-2.0 license caveat as `depconv` with respect to DOT
 > parsing.
 
+## deptransform
+
+Structural transformations on dependency graphs. Works on the same formats as `depconv`, and is
+designed to be chained with pipes.
+
+The `deptransform` tool supports the following subcommands:
+
+* `deptransform reverse` - reverse the direction of all edges in the graph
+* `deptransform simplify` - remove redundant edges (e.g. if A->B and B->C, then A->C is redundant)
+* `deptransform shorten` - shorten node IDs that look like paths (`minpath`, but for node IDs)
+* `deptransform sub` - `sed`, but for node IDs and node / edge attributes
+* `deptransform merge` - merge multiple graphs into one
+* `deptransform flatten` - recursively flatten subgraphs into the parent graph
+
+```sh
+# Collapse bitbake task-level nodes IDs (acl-native.do_compile -> acl-native), then remove the
+# now-misleading node labels
+$ cat data/depconv/bitbake.curl.task-depends.dot |
+    deptransform sub --key=id 's/\.do_.*//' |
+    deptransform sub --key=node:label 's/.*//' |
+```
+
+> [!NOTE]
+>
+> The `deptransform` tool shares the same GPL-2.0 license caveat as `depconv` with respect to DOT
+> parsing.
+
 ## can2csv
 
 Parse basic data from a CAN frame into a CSV record. Faster than `sed`, and also parses the canid.

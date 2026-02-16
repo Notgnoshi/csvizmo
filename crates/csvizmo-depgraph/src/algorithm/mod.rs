@@ -1,7 +1,13 @@
 pub mod between;
 pub mod cycles;
 pub mod filter;
+pub mod flatten;
+pub mod merge;
+pub mod reverse;
 pub mod select;
+pub mod shorten;
+pub mod simplify;
+pub mod sub;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
