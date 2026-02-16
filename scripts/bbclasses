@@ -95,7 +95,32 @@ def discover_nodes(tinfoil, d):
     nodes.update(dep_files)
     nodes.update(appends)
     logging.info("Total node count: %d", len(nodes))
-    return nodes, recipe_file, inherit_cache, appends, common_prefix
+    return nodes, recipe_file, inherit_cache, dep_files, appends, common_prefix
+
+
+# Edge discovery helpers
+
+
+def preprocess(text):
+    """Prepare file contents for directive scanning.
+
+    Strips comment lines and joins backslash-continuation lines.
+    """
+    lines = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue
+        lines.append(line)
+    joined = "\n".join(lines)
+    return joined.replace("\\\n", " ")
+
+
+def discover_edges(nodes, inherit_cache, depends):
+    """Given a set of nodes, discover edges by parsing the files for directives."""
+    edges = []
+
+    return edges
 
 
 BASE_FILTER_BASENAMES = {
@@ -153,7 +178,7 @@ def escape_label(text):
 def strip_prefix(path, prefix):
     """Strip a common prefix from a path, returning the relative remainder."""
     if path.startswith(prefix):
-        return path[len(prefix):]
+        return path[len(prefix) :]
     return path
 
 
@@ -201,14 +226,14 @@ def main(args):
     with bb.tinfoil.Tinfoil() as tinfoil:
         tinfoil.prepare(config_only=False)
         d = parse_recipe(tinfoil, args.recipe)
-        nodes, recipe_file, inherit_cache, appends, common_prefix = discover_nodes(
+        nodes, recipe_file, inherit_cache, depends, appends, common_prefix = discover_nodes(
             tinfoil, d
         )
 
     if not args.no_filter_base:
         nodes = filter_base_infrastructure(nodes)
 
-    edges = []  # TODO: discover_edges()
+    edges = discover_edges(nodes, inherit_cache, depends)
 
     if args.output:
         with open(args.output, "w") as f:
