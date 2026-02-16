@@ -38,6 +38,13 @@ usage() {
     echo "                            4. ~/.cargo/bin/, if present"
 }
 
+check_dependencies() {
+    if ! command -v jq &>/dev/null; then
+        error "jq is required but not installed."
+        return 1
+    fi
+}
+
 default_prefix() {
     local prefix=""
     if [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]; then
@@ -54,22 +61,28 @@ default_prefix() {
 }
 
 csvizmo_binaries() {
-    # This is "better", but it also requires jq as a dependency:
-    #
-    # cargo metadata --no-deps --format-version 1 |
-    #   jq '.packages[] |
-    #       select(.name == "csvizmo") |
-    #       .targets[] |
-    #       .select(.kind == ["bin"])
-    #  '
-    local -r bindir="$CSVIZMO_REPO_ROOT/src/bin"
-    for bin in "$bindir"/*.rs; do
-        bin="$(basename -- "$bin")"
-        bin="${bin%.*}"
-        if [[ "$bin" != "template" ]]; then
-            echo "$bin"
-        fi
-    done
+    cargo metadata --no-deps --format-version 1 |
+        jq -r '.packages[] | .targets[] | select(.kind[] == "bin") | .name' |
+        grep -v '^template$'
+}
+
+csvizmo_packages_with_bins() {
+    # Returns package paths for packages that have binary targets
+    cargo metadata --no-deps --format-version 1 |
+        jq -r '.packages[] | select(.targets[] | .kind[] == "bin") | .manifest_path' |
+        sort -u |
+        while read -r manifest; do
+            dirname "$manifest"
+        done
+}
+
+package_binaries() {
+    # Get binaries for a specific package
+    local -r pkg_path="$1"
+    cargo metadata --no-deps --format-version 1 |
+        jq -r --arg pkg_path "$pkg_path/Cargo.toml" \
+            '.packages[] | select(.manifest_path == $pkg_path) | .targets[] | select(.kind[] == "bin") | .name' |
+        grep -v '^template$'
 }
 
 csvizmo_scripts() {
@@ -83,19 +96,32 @@ install_csvizmo() {
     local -r prefix="$2"
 
     info "Installing Rust binaries to $prefix ..."
-    local cargo_cmd=(
-        cargo install --path "$CSVIZMO_REPO_ROOT" --root "$prefix"
-    )
-    if [[ "$dry_run" = "true" ]]; then
-        # NOTE: This flag is unstable
-        # cargo_cmd+=("--dry-run")
-        info "Dry run. Would have run:"
-        cargo_cmd=(echo "${cargo_cmd[@]}")
-    fi
-    for bin in $(csvizmo_binaries); do
-        cargo_cmd+=(--bin "$bin")
-    done
-    "${cargo_cmd[@]}"
+
+    # Install from each workspace package that has binaries
+    while read -r pkg_path; do
+        local cargo_cmd=(
+            cargo install --path "$pkg_path" --root "$prefix"
+        )
+
+        # Add --bin flag for each binary in this package (excluding template)
+        local bins=()
+        while read -r bin; do
+            bins+=("$bin")
+            cargo_cmd+=(--bin "$bin")
+        done < <(package_binaries "$pkg_path")
+
+        if [[ ${#bins[@]} -eq 0 ]]; then
+            continue
+        fi
+
+        if [[ "$dry_run" = "true" ]]; then
+            info "Dry run. Would have run:"
+            echo "  ${cargo_cmd[*]}"
+        else
+            info "Installing from $(basename "$pkg_path"): ${bins[*]}"
+            "${cargo_cmd[@]}"
+        fi
+    done < <(csvizmo_packages_with_bins)
 
     info "Installing project scripts to $prefix ..."
     for script in $(csvizmo_scripts); do
@@ -115,14 +141,15 @@ uninstall_csvizmo() {
     local -r dry_run="$1"
     local -r prefix="$2"
 
-    info "Uninstalling csvizmo ..."
-    cargo_cmd=(cargo uninstall csvizmo)
-
-    if [[ "$dry_run" = "false" ]]; then
-        "${cargo_cmd[@]}"
-    else
-        echo "Dry run. Would have run: '${cargo_cmd[*]}'"
-    fi
+    info "Uninstalling csvizmo binaries ..."
+    for bin in $(csvizmo_binaries); do
+        if [[ "$dry_run" = "false" ]]; then
+            info "Uninstalling $bin ..."
+            cargo uninstall "$bin" || true
+        else
+            echo "Dry run. Would have run: 'cargo uninstall $bin'"
+        fi
+    done
     info "Uninstalling project scripts from $prefix ..."
     for script in $(csvizmo_scripts); do
         script="$(basename -- "$script")"
@@ -143,6 +170,11 @@ main() {
     local dry_run="false"
     local prefix
     prefix="$(default_prefix)"
+
+    # Check for required dependencies
+    if ! check_dependencies; then
+        return 1
+    fi
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
