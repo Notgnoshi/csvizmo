@@ -157,9 +157,56 @@ def resolve_include(ref, nodes):
     return None
 
 
-def discover_edges(nodes, inherit_cache, depends):
-    """Given a set of nodes, discover edges by parsing the files for directives."""
+INHERIT_RE = re.compile(r"^(inherit(?:_defer)?)\s+(.+)", re.MULTILINE)
+REQUIRE_INCLUDE_RE = re.compile(r"^(require|include)\s+(\S+)", re.MULTILINE)
+
+
+def scan_file(source, nodes, class_lookup):
+    """Parse a single file for inherit/require/include directives, returning edges."""
     edges = []
+    try:
+        text = preprocess(open(source).read())
+    except OSError:
+        logging.warning("Could not read file: %s", source)
+        return edges
+
+    for match in INHERIT_RE.finditer(text):
+        edge_type = match.group(1)
+        for name in match.group(2).split():
+            target = resolve_inherit(name, class_lookup)
+            if target and target in nodes:
+                edges.append((source, target, edge_type))
+
+    for match in REQUIRE_INCLUDE_RE.finditer(text):
+        edge_type = match.group(1)
+        ref = match.group(2)
+        target = resolve_include(ref, nodes)
+        if target:
+            edges.append((source, target, edge_type))
+
+    return edges
+
+
+def discover_edges(nodes, recipe_file, inherit_cache, depends, appends):
+    """Discover edges by scanning the recipe, its inherited classes, and its dependencies."""
+    class_lookup = build_class_lookup(inherit_cache)
+    edges = []
+
+    # Scan the recipe file itself
+    edges.extend(scan_file(recipe_file, nodes, class_lookup))
+
+    # Scan each inherited bbclass
+    for path in inherit_cache:
+        edges.extend(scan_file(path, nodes, class_lookup))
+
+    # Scan each file dependency (.bb, .inc, .bbappend)
+    for path in depends:
+        edges.extend(scan_file(path, nodes, class_lookup))
+
+    # Synthetic appends edges
+    for append in appends:
+        if append in nodes:
+            edges.append((append, recipe_file, "appends"))
 
     return edges
 
@@ -274,7 +321,7 @@ def main(args):
     if not args.no_filter_base:
         nodes = filter_base_infrastructure(nodes)
 
-    edges = discover_edges(nodes, inherit_cache, depends)
+    edges = discover_edges(nodes, recipe_file, inherit_cache, depends, appends)
 
     if args.output:
         with open(args.output, "w") as f:
