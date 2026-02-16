@@ -5,6 +5,7 @@ pub mod reverse;
 pub mod select;
 pub mod shorten;
 pub mod simplify;
+pub mod sub;
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 

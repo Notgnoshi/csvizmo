@@ -4,9 +4,24 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use csvizmo_depgraph::algorithm;
 use csvizmo_depgraph::algorithm::shorten::ShortenArgs;
+use csvizmo_depgraph::algorithm::sub::{SubKey, Substitution};
 use csvizmo_depgraph::emit::OutputFormat;
 use csvizmo_depgraph::parse::InputFormat;
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
+
+/// Arguments for the `sub` subcommand.
+#[derive(Debug, clap::Parser)]
+struct SubArgs {
+    /// Sed-style substitution: s/pattern/replacement/
+    ///
+    /// Uses Rust regex syntax: (...) for capture groups, $1/${name} in replacement.
+    /// Supports alternate delimiters: s|...|...|, s#...#...#, etc.
+    expr: String,
+
+    /// Field to apply substitution to: id, node:NAME, or edge:NAME
+    #[clap(long, default_value = "id")]
+    key: String,
+}
 
 /// Structural transformations on dependency graphs.
 ///
@@ -47,6 +62,11 @@ enum Command {
     Simplify,
     /// Shorten node IDs and/or labels using path transforms
     Shorten(ShortenArgs),
+    /// Apply sed-style regex substitution to graph fields
+    ///
+    /// Uses Rust regex syntax: (...) for capture groups, $1/${name} in replacement.
+    /// When applied to node IDs, nodes that map to the same ID are merged.
+    Sub(SubArgs),
 }
 
 fn main() -> eyre::Result<()> {
@@ -103,6 +123,11 @@ fn main() -> eyre::Result<()> {
                 shorten_args.key,
                 &transforms,
             )
+        }
+        Command::Sub(sub_args) => {
+            let substitution = Substitution::parse(&sub_args.expr)?;
+            let key = SubKey::parse(&sub_args.key)?;
+            algorithm::sub::sub(&graph, &substitution, &key)
         }
     };
 

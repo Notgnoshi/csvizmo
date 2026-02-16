@@ -226,3 +226,149 @@ fn shorten_single_letter() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, "s/f/bar.rs\n#\n");
 }
+
+// -- sub integration tests --
+
+#[test]
+fn sub_id_no_collision() {
+    // Rename node IDs with no collisions; labels are preserved from original
+    let graph = "a.do_compile\nb.do_build\n#\na.do_compile\tb.do_build\n";
+    let output = tool!("deptransform")
+        .args([
+            "sub",
+            "s/\\.do_.*//",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\ta.do_compile\nb\tb.do_build\n#\na\tb\n");
+}
+
+#[test]
+fn sub_id_merges_and_removes_self_loops() {
+    // Two nodes map to the same ID; self-loop removed, first label wins
+    let graph = "a.x\ta.x\na.y\ta.y\n#\na.x\ta.y\n";
+    let output = tool!("deptransform")
+        .args([
+            "sub",
+            "s/\\..*//",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\ta.x\n#\n");
+}
+
+#[test]
+fn sub_id_deduplicates_edges() {
+    // a.x -> b, a.y -> b both become a -> b; only one edge kept
+    let graph = "a.x\ta.x\na.y\ta.y\nb\tb\n#\na.x\tb\na.y\tb\n";
+    let output = tool!("deptransform")
+        .args([
+            "sub",
+            "s/\\..*//",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\ta.x\nb\n#\na\tb\n");
+}
+
+#[test]
+fn sub_node_label() {
+    let graph = "a\thello world\nb\tgoodbye world\n#\n";
+    let output = tool!("deptransform")
+        .args([
+            "sub",
+            "--key",
+            "node:label",
+            "s/world/earth/",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\thello earth\nb\tgoodbye earth\n#\n");
+}
+
+#[test]
+fn sub_alternate_delimiter() {
+    let graph = "a/b\nc/d\n#\na/b\tc/d\n";
+    let output = tool!("deptransform")
+        .args([
+            "sub",
+            "s|/|.|",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a.b\ta/b\nc.d\tc/d\n#\na.b\tc.d\n");
+}
+
+#[test]
+fn sub_capture_groups() {
+    // Use capture group to extract first component
+    let graph = "foo.bar\nbaz.qux\n#\nfoo.bar\tbaz.qux\n";
+    let output = tool!("deptransform")
+        .args([
+            "sub",
+            "s/([^.]+)\\..*/$1/",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "foo\tfoo.bar\nbaz\tbaz.qux\n#\nfoo\tbaz\n");
+}
+
+#[test]
+fn sub_invalid_expr() {
+    let graph = "a\n#\n";
+    let output = tool!("deptransform")
+        .args([
+            "sub",
+            "not-a-substitution",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(!output.status.success());
+}
