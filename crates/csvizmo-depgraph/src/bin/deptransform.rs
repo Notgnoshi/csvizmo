@@ -82,6 +82,8 @@ enum Command {
     /// Edges are deduplicated by (from, to); first label wins, attributes are merged.
     /// The global --input/-i flag, if set, is included as the first file.
     Merge(MergeArgs),
+    /// Flatten subgraphs into a single top-level graph
+    Flatten,
 }
 
 fn main() -> eyre::Result<()> {
@@ -151,6 +153,7 @@ fn main() -> eyre::Result<()> {
                     let key = SubKey::parse(&sub_args.key)?;
                     algorithm::sub::sub(&graph, &substitution, &key)
                 }
+                Command::Flatten => algorithm::flatten::flatten(&graph),
                 Command::Merge(_) => unreachable!(),
             }
         }
