@@ -134,24 +134,28 @@ def build_class_lookup(inherit_cache):
     return lookup
 
 
-def resolve_inherit(name, class_lookup):
+def resolve_inherit(name, class_lookup, d):
     """Resolve an inherit class name to its full path, or None."""
     if "$" in name:
-        # TODO: variable expansion
-        logging.debug("Skipping variable reference in inherit: %s", name)
-        return None
+        try:
+            name = d.expand(name)
+        except Exception:
+            logging.debug("Could not expand variable in inherit: %s", name)
+            return None
     result = class_lookup.get(name)
     if result is None:
         logging.debug("Could not resolve inherit: %s", name)
     return result
 
 
-def resolve_include(ref, nodes):
+def resolve_include(ref, nodes, d):
     """Resolve a require/include path to a node in the set by suffix match, or None."""
     if "$" in ref:
-        # TODO: variable expansion
-        logging.debug("Skipping variable reference in include: %s", ref)
-        return None
+        try:
+            ref = d.expand(ref)
+        except Exception:
+            logging.debug("Could not expand variable in include: %s", ref)
+            return None
     matches = [n for n in nodes if n.endswith("/" + ref) or n == ref]
     if len(matches) == 1:
         return matches[0]
@@ -163,10 +167,36 @@ def resolve_include(ref, nodes):
 
 
 INHERIT_RE = re.compile(r"^(inherit(?:_defer)?)\s+(.+)", re.MULTILINE)
-REQUIRE_INCLUDE_RE = re.compile(r"^(require|include)\s+(\S+)", re.MULTILINE)
+REQUIRE_INCLUDE_RE = re.compile(r"^(require|include)\s+(.+)", re.MULTILINE)
 
 
-def scan_file(source, nodes, class_lookup):
+def split_tokens(text):
+    """Split a string on whitespace, respecting ${...} brace nesting."""
+    tokens = []
+    current = []
+    depth = 0
+    for char in text:
+        if char == "$" or (depth > 0 and char == "{"):
+            if char == "{":
+                depth += 1
+            current.append(char)
+        elif depth > 0 and char == "}":
+            depth -= 1
+            current.append(char)
+        elif depth == 0 and char in (" ", "\t"):
+            if current:
+                tokens.append("".join(current))
+                current = []
+        else:
+            if char == "{" and current and current[-1] == "$":
+                depth += 1
+            current.append(char)
+    if current:
+        tokens.append("".join(current))
+    return tokens
+
+
+def scan_file(source, nodes, class_lookup, d):
     """Parse a single file for inherit/require/include directives, returning edges."""
     edges = []
     try:
@@ -177,42 +207,42 @@ def scan_file(source, nodes, class_lookup):
 
     for match in INHERIT_RE.finditer(text):
         edge_type = match.group(1)
-        for name in match.group(2).split():
-            target = resolve_inherit(name, class_lookup)
+        for name in split_tokens(match.group(2)):
+            target = resolve_inherit(name, class_lookup, d)
             if target and target in nodes:
                 edges.append((target, source, edge_type))
 
     for match in REQUIRE_INCLUDE_RE.finditer(text):
         edge_type = match.group(1)
-        ref = match.group(2)
-        target = resolve_include(ref, nodes)
+        ref = match.group(2).strip()
+        target = resolve_include(ref, nodes, d)
         if target:
             edges.append((target, source, edge_type))
 
     return edges
 
 
-def discover_edges(nodes, recipe_file, inherit_cache, depends, appends, global_inherits):
+def discover_edges(nodes, recipe_file, inherit_cache, depends, appends, global_inherits, d):
     """Discover edges by scanning the recipe, its inherited classes, and its dependencies."""
     class_lookup = build_class_lookup(inherit_cache)
     edges = []
 
     # Global INHERIT classes (from local.conf / bitbake.conf / layer.conf)
     for name in global_inherits:
-        target = resolve_inherit(name, class_lookup)
+        target = resolve_inherit(name, class_lookup, d)
         if target and target in nodes:
             edges.append((target, recipe_file, "INHERIT"))
 
     # Scan the recipe file itself
-    edges.extend(scan_file(recipe_file, nodes, class_lookup))
+    edges.extend(scan_file(recipe_file, nodes, class_lookup, d))
 
     # Scan each inherited bbclass
     for path in inherit_cache:
-        edges.extend(scan_file(path, nodes, class_lookup))
+        edges.extend(scan_file(path, nodes, class_lookup, d))
 
     # Scan each file dependency (.bb, .inc, .bbappend)
     for path in depends:
-        edges.extend(scan_file(path, nodes, class_lookup))
+        edges.extend(scan_file(path, nodes, class_lookup, d))
 
     # Synthetic appends edges
     for append in appends:
@@ -334,8 +364,9 @@ def main(args):
         nodes, recipe_file, inherit_cache, depends, appends, global_inherits, common_prefix = (
             discover_nodes(tinfoil, d)
         )
-
-    edges = discover_edges(nodes, recipe_file, inherit_cache, depends, appends, global_inherits)
+        edges = discover_edges(
+            nodes, recipe_file, inherit_cache, depends, appends, global_inherits, d
+        )
 
     if not args.no_filter_base:
         nodes, edges = filter_base_infrastructure(nodes, edges)
