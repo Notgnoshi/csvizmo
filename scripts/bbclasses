@@ -379,15 +379,20 @@ def main(args):
             "(e.g. 'source oe-init-build-env')."
         )
 
-    with bb.tinfoil.Tinfoil(output=sys.stderr) as tinfoil:
-        tinfoil.prepare(config_only=False)
-        d = parse_recipe(tinfoil, args.recipe)
-        nodes, recipe_file, inherit_cache, depends, appends, global_inherits, common_prefix = (
-            discover_nodes(tinfoil, d)
-        )
-        edges = discover_edges(
-            nodes, recipe_file, inherit_cache, depends, appends, global_inherits, d
-        )
+    saved_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        with bb.tinfoil.Tinfoil(output=sys.stderr) as tinfoil:
+            tinfoil.prepare(config_only=False)
+            d = parse_recipe(tinfoil, args.recipe)
+            nodes, recipe_file, inherit_cache, depends, appends, global_inherits, common_prefix = (
+                discover_nodes(tinfoil, d)
+            )
+            edges = discover_edges(
+                nodes, recipe_file, inherit_cache, depends, appends, global_inherits, d
+            )
+    finally:
+        sys.stdout = saved_stdout
 
     if not args.no_filter_base:
         nodes, edges = filter_base_infrastructure(nodes, edges)
@@ -402,17 +407,10 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    fmt = "%(asctime)s %(module)s %(levelname)s: %(message)s"
     logging.basicConfig(
-        format=fmt,
+        format="%(asctime)s %(module)s %(levelname)s: %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S%z",
         level=args.log_level,
         stream=sys.stderr,
     )
-    try:
-        import coloredlogs
-
-        coloredlogs.install(fmt=fmt, level=args.log_level, datefmt="%Y-%m-%dT%H:%M:%S%z")
-    except ImportError:
-        pass
     main(args)
