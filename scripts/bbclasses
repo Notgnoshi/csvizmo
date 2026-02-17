@@ -144,18 +144,26 @@ def build_class_lookup(inherit_cache):
     return lookup
 
 
-def resolve_inherit(name, class_lookup, d):
-    """Resolve an inherit class name to its full path, or None."""
+def resolve_inherits(name, class_lookup, d):
+    """Resolve an inherit class name to a list of (name, path) pairs.
+
+    A single name can expand to multiple classes if it contains a variable
+    reference like ${IMGCLASSES} or ${@bb.utils.contains(...)}.
+    """
     if "$" in name:
         try:
             name = d.expand(name)
         except Exception:
             logging.warning("Could not expand variable in inherit: %s", name)
-            return None
-    result = class_lookup.get(name)
-    if result is None:
-        logging.warning("Could not resolve inherit: %s", name)
-    return result
+            return []
+    results = []
+    for n in name.split():
+        path = class_lookup.get(n)
+        if path is None:
+            logging.warning("Could not resolve inherit: %s", n)
+        else:
+            results.append(path)
+    return results
 
 
 def resolve_include(ref, nodes, d):
@@ -218,9 +226,9 @@ def scan_file(source, nodes, class_lookup, d):
     for match in INHERIT_RE.finditer(text):
         edge_type = match.group(1)
         for name in split_tokens(match.group(2)):
-            target = resolve_inherit(name, class_lookup, d)
-            if target and target in nodes:
-                edges.append((target, source, edge_type))
+            for target in resolve_inherits(name, class_lookup, d):
+                if target in nodes:
+                    edges.append((target, source, edge_type))
 
     for match in REQUIRE_INCLUDE_RE.finditer(text):
         edge_type = match.group(1)
@@ -239,9 +247,9 @@ def discover_edges(nodes, recipe_file, inherit_cache, depends, appends, global_i
 
     # Global INHERIT classes (from local.conf / bitbake.conf / layer.conf)
     for name in global_inherits:
-        target = resolve_inherit(name, class_lookup, d)
-        if target and target in nodes:
-            edges.append((target, recipe_file, "INHERIT"))
+        for target in resolve_inherits(name, class_lookup, d):
+            if target in nodes:
+                edges.append((target, recipe_file, "INHERIT"))
 
     # Scan the recipe file itself
     edges.extend(scan_file(recipe_file, nodes, class_lookup, d))
