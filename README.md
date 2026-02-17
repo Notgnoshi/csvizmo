@@ -5,6 +5,24 @@
 
 Gizmos for working with CSVs
 
+## Table of contents
+
+* [csvplot](#csvplot) -- line and scatter plots from CSV files
+* [csvstats](#csvstats) -- histograms and summary statistics for CSV files
+* [csvcat](#csvcat) -- concatenate CSV files
+* [can2k](#can2k) -- parse NMEA 2000 GPS data from CAN logs
+* [qgsdir](#qgsdir) -- generate QGIS projects from directories of CSV files
+* [csvdelta](#csvdelta) -- calculate inter-row deltas for CSV files
+* [minpath](#minpath) -- shorten file paths to minimal unique suffixes
+* [depconv](#depconv) -- convert dependency graphs between formats
+* [depfilter](#depfilter) -- filter or select subsets of dependency graphs
+* [deptransform](#deptransform) -- transform dependency graphs
+* [can2csv](#can2csv) -- parse CAN logs into CSV files
+* [canspam](#canspam) -- generate random CAN traffic
+* [canstruct](#canstruct) -- reconstruct NMEA 2000 Fast Packet / ISO 11783-3 Transport Protocol
+  sessions
+* [bbclasses](#bbclasses) -- generate BitBake recipe inheritance diagrams
+
 # Philosophy
 
 Rather than to build an infinitely flexible, highly optimized, does-everything-and-more toolkit (see
