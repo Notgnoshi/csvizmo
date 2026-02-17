@@ -342,3 +342,73 @@ $ canstruct data/abort-then-full.log
 2025-06-28T15:36:19.051620Z  WARN csvizmo::can::tp: TP.CM_ABRT 0x1C <- 0x2A reason ExistingTransportSession pgn 0xEF00
 (1750963079.795905) can0 18EF2A1C#11111111111111222222222222223333333333333344
 ```
+
+## bbclasses
+
+The [bbclasses](./scripts/bbclasses) script can parse BitBake recipes to generate an inheritance
+diagram. It tries to evaluate variable expansion, and needs to run in your BitBake environment to
+work properly.
+
+```sh
+bbclasses --group-by-layer curl >curl.dot
+```
+
+```mermaid
+flowchart LR
+    subgraph meta[meta]
+        poky/meta/classes-global/debian.bbclass{{"poky/meta/classes-global/debian.bbclass"}}
+        poky/meta/classes-global/package.bbclass{{"poky/meta/classes-global/package.bbclass"}}
+        poky/meta/classes-global/package_pkgdata.bbclass{{"poky/meta/classes-global/package_pkgdata.bbclass"}}
+        poky/meta/classes-global/package_rpm.bbclass{{"poky/meta/classes-global/package_rpm.bbclass"}}
+        poky/meta/classes-global/packagedata.bbclass{{"poky/meta/classes-global/packagedata.bbclass"}}
+        poky/meta/classes-recipe/autotools.bbclass{{"poky/meta/classes-recipe/autotools.bbclass"}}
+        poky/meta/classes-recipe/binconfig.bbclass{{"poky/meta/classes-recipe/binconfig.bbclass"}}
+        poky/meta/classes-recipe/multilib_header.bbclass{{"poky/meta/classes-recipe/multilib_header.bbclass"}}
+        poky/meta/classes-recipe/multilib_script.bbclass{{"poky/meta/classes-recipe/multilib_script.bbclass"}}
+        poky/meta/classes-recipe/pkgconfig.bbclass{{"poky/meta/classes-recipe/pkgconfig.bbclass"}}
+        poky/meta/classes-recipe/ptest.bbclass{{"poky/meta/classes-recipe/ptest.bbclass"}}
+        poky/meta/classes-recipe/siteinfo.bbclass{{"poky/meta/classes-recipe/siteinfo.bbclass"}}
+        poky/meta/classes-recipe/update-alternatives.bbclass{{"poky/meta/classes-recipe/update-alternatives.bbclass"}}
+        poky/meta/classes/chrpath.bbclass{{"poky/meta/classes/chrpath.bbclass"}}
+        poky/meta/classes/image-buildinfo.bbclass{{"poky/meta/classes/image-buildinfo.bbclass"}}
+        poky/meta/classes/siteconfig.bbclass{{"poky/meta/classes/siteconfig.bbclass"}}
+        poky/meta/conf/distro/include/ptest-packagelists.inc[["poky/meta/conf/distro/include/ptest-packagelists.inc"]]
+        poky/meta/recipes-support/curl/curl_8.7.1.bb["poky/meta/recipes-support/curl/curl_8.7.1.bb"]
+    end
+    subgraph meta-oem[meta-oem]
+        meta-oem/classes/dynamic-packagearch.bbclass{{"meta-oem/classes/dynamic-packagearch.bbclass"}}
+        meta-oem/classes/machine-overrides-extender.bbclass{{"meta-oem/classes/machine-overrides-extender.bbclass"}}
+    end
+    poky/meta-poky/classes/poky-sanity.bbclass{{"poky/meta-poky/classes/poky-sanity.bbclass"}}
+    meta-work/recipes-support/curl/curl__.bbappend(["meta-work/recipes-support/curl/curl_%.bbappend"])
+    meta-oem/classes/dynamic-packagearch.bbclass -->|"INHERIT"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    meta-oem/classes/machine-overrides-extender.bbclass -->|"INHERIT"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta-poky/classes/poky-sanity.bbclass -->|"INHERIT"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-global/debian.bbclass -->|"INHERIT"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-global/package.bbclass -->|"inherit"| poky/meta/classes-global/debian.bbclass
+    poky/meta/classes-global/package.bbclass -->|"inherit"| poky/meta/classes-global/package_rpm.bbclass
+    poky/meta/classes-global/package_pkgdata.bbclass -->|"inherit"| poky/meta/classes-global/package.bbclass
+    poky/meta/classes-global/package_rpm.bbclass -->|"INHERIT"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-global/package_rpm.bbclass -->|"INHERIT"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-global/packagedata.bbclass -->|"inherit"| poky/meta/classes-global/package.bbclass
+    poky/meta/classes-recipe/autotools.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/autotools.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/binconfig.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/binconfig.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/multilib_header.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/multilib_header.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/multilib_script.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/multilib_script.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/pkgconfig.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/pkgconfig.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/ptest.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/ptest.bbclass -->|"inherit"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes-recipe/siteinfo.bbclass -->|"inherit"| poky/meta/classes-recipe/autotools.bbclass
+    poky/meta/classes-recipe/siteinfo.bbclass -->|"inherit"| poky/meta/classes-recipe/multilib_header.bbclass
+    poky/meta/classes-recipe/update-alternatives.bbclass -->|"inherit"| poky/meta/classes-recipe/multilib_script.bbclass
+    poky/meta/classes/chrpath.bbclass -->|"inherit"| poky/meta/classes-global/package.bbclass
+    poky/meta/classes/image-buildinfo.bbclass -->|"INHERIT"| poky/meta/recipes-support/curl/curl_8.7.1.bb
+    poky/meta/classes/siteconfig.bbclass -->|"inherit"| poky/meta/classes-recipe/autotools.bbclass
+    poky/meta/conf/distro/include/ptest-packagelists.inc -->|"require"| poky/meta/classes-recipe/ptest.bbclass
+    poky/meta/recipes-support/curl/curl_8.7.1.bb -->|"appends"| meta-work/recipes-support/curl/curl__.bbappend
+```
