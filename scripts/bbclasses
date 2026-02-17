@@ -379,7 +379,7 @@ def main(args):
             "(e.g. 'source oe-init-build-env')."
         )
 
-    with bb.tinfoil.Tinfoil() as tinfoil:
+    with bb.tinfoil.Tinfoil(output=sys.stderr) as tinfoil:
         tinfoil.prepare(config_only=False)
         d = parse_recipe(tinfoil, args.recipe)
         nodes, recipe_file, inherit_cache, depends, appends, global_inherits, common_prefix = (
