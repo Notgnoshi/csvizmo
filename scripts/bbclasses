@@ -226,7 +226,6 @@ BASE_FILTER_BASENAMES = {
     "base.bbclass",
     "bblayers.conf",
     "bitbake.conf",
-    "documentation.bbclass",
     "insane.bbclass",
     "license.bbclass",
     "local.conf",
@@ -238,12 +237,13 @@ BASE_FILTER_BASENAMES = {
     "sstate.bbclass",
     "staging.bbclass",
     "utility-tasks.bbclass",
+    "utils.bbclass",
 }
 
 
-def filter_base_infrastructure(nodes):
-    """Remove base BitBake infrastructure files that add noise to the graph."""
-    filtered = set()
+def filter_base_infrastructure(nodes, edges):
+    """Remove base BitBake infrastructure files and their edges."""
+    filtered_nodes = set()
     for path in nodes:
         basename = os.path.basename(path)
         if basename in BASE_FILTER_BASENAMES:
@@ -252,8 +252,13 @@ def filter_base_infrastructure(nodes):
         if path.endswith(".conf"):
             logging.debug("Filtering conf file: %s", path)
             continue
-        filtered.add(path)
-    return filtered
+        filtered_nodes.add(path)
+    filtered_edges = [
+        (src, tgt, etype)
+        for src, tgt, etype in edges
+        if src in filtered_nodes and tgt in filtered_nodes
+    ]
+    return filtered_nodes, filtered_edges
 
 
 # Mermaid output helpers
@@ -298,7 +303,8 @@ def node_shape(path, label):
 
 def emit_mermaid(nodes, edges, common_prefix, out):
     """Write a Mermaid flowchart to the given file object."""
-    out.write("flowchart TB\n")
+    # Normal inheritance diagrams are TB, but LR diagrams render better when there's lots of nodes
+    out.write("flowchart LR\n")
     for path in sorted(nodes):
         path = strip_prefix(path, common_prefix)
         node_id = sanitize_mermaid_id(path)
@@ -329,10 +335,10 @@ def main(args):
             discover_nodes(tinfoil, d)
         )
 
-    if not args.no_filter_base:
-        nodes = filter_base_infrastructure(nodes)
-
     edges = discover_edges(nodes, recipe_file, inherit_cache, depends, appends, global_inherits)
+
+    if not args.no_filter_base:
+        nodes, edges = filter_base_infrastructure(nodes, edges)
 
     if args.output:
         with open(args.output, "w") as f:
