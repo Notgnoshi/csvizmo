@@ -22,11 +22,13 @@ def parse_args():
     )
     parser.add_argument(
         "--no-filter-base",
+        "-n",
         action="store_true",
         help="Disable filtering of base BitBake infrastructure noise",
     )
     parser.add_argument(
         "--group-by-layer",
+        "-g",
         action="store_true",
         help="Group files into Mermaid subgraphs by meta-layer",
     )
@@ -34,7 +36,7 @@ def parse_args():
         "--log-level",
         "-l",
         type=str,
-        default="DEBUG",
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set the logging output level. Defaults to INFO.",
     )
@@ -110,7 +112,16 @@ def discover_nodes(tinfoil, d):
     dep_files = [p for p in dep_files if p in exists]
     appends = [p for p in appends if p in exists]
     logging.info("Total node count: %d", len(exists))
-    return exists, recipe_file, inherit_cache, dep_files, appends, global_inherits, common_prefix
+    return (
+        exists,
+        recipe_file,
+        inherit_cache,
+        dep_files,
+        appends,
+        global_inherits,
+        bblayers,
+        common_prefix,
+    )
 
 
 # Edge discovery helpers
@@ -352,15 +363,47 @@ def node_shape(path, label):
         return f'["{escaped}"]'
 
 
-def emit_mermaid(nodes, edges, common_prefix, out):
+def classify_layers(nodes, bblayers):
+    """Group nodes by layer using longest-prefix match against BBLAYERS."""
+    layers = {}
+    for path in sorted(nodes):
+        best = None
+        for layer in bblayers:
+            if path.startswith(layer + "/") and (best is None or len(layer) > len(best)):
+                best = layer
+        layer_name = os.path.basename(best) if best else "other"
+        layers.setdefault(layer_name, []).append(path)
+    return layers
+
+
+def emit_node(path, common_prefix, indent, out):
+    """Emit a single Mermaid node definition."""
+    rel = strip_prefix(path, common_prefix)
+    node_id = sanitize_mermaid_id(rel)
+    shape = node_shape(rel, label=rel)
+    out.write(f"{indent}{node_id}{shape}\n")
+
+
+def emit_mermaid(nodes, edges, common_prefix, bblayers, group_by_layer, out):
     """Write a Mermaid flowchart to the given file object."""
     # Normal inheritance diagrams are TB, but LR diagrams render better when there's lots of nodes
     out.write("flowchart LR\n")
-    for path in sorted(nodes):
-        path = strip_prefix(path, common_prefix)
-        node_id = sanitize_mermaid_id(path)
-        shape = node_shape(path, label=path)
-        out.write(f"    {node_id}{shape}\n")
+
+    if group_by_layer:
+        layers = classify_layers(nodes, bblayers)
+        for layer_name in sorted(layers):
+            paths = layers[layer_name]
+            if len(paths) > 1:
+                layer_id = sanitize_mermaid_id(layer_name)
+                out.write(f"    subgraph {layer_id}[{layer_name}]\n")
+                for path in paths:
+                    emit_node(path, common_prefix, "        ", out)
+                out.write("    end\n")
+            else:
+                emit_node(paths[0], common_prefix, "    ", out)
+    else:
+        for path in sorted(nodes):
+            emit_node(path, common_prefix, "    ", out)
 
     for source, target, edge_type in sorted(edges):
         src_id = sanitize_mermaid_id(strip_prefix(source, common_prefix))
@@ -385,9 +428,16 @@ def main(args):
         with bb.tinfoil.Tinfoil(output=sys.stderr) as tinfoil:
             tinfoil.prepare(config_only=False)
             d = parse_recipe(tinfoil, args.recipe)
-            nodes, recipe_file, inherit_cache, depends, appends, global_inherits, common_prefix = (
-                discover_nodes(tinfoil, d)
-            )
+            (
+                nodes,
+                recipe_file,
+                inherit_cache,
+                depends,
+                appends,
+                global_inherits,
+                bblayers,
+                common_prefix,
+            ) = discover_nodes(tinfoil, d)
             edges = discover_edges(
                 nodes, recipe_file, inherit_cache, depends, appends, global_inherits, d
             )
@@ -399,10 +449,10 @@ def main(args):
 
     if args.output:
         with open(args.output, "w") as f:
-            emit_mermaid(nodes, edges, common_prefix, f)
+            emit_mermaid(nodes, edges, common_prefix, bblayers, args.group_by_layer, f)
         logging.info("Wrote output to %s", args.output)
     else:
-        emit_mermaid(nodes, edges, common_prefix, sys.stdout)
+        emit_mermaid(nodes, edges, common_prefix, bblayers, args.group_by_layer, sys.stdout)
 
 
 if __name__ == "__main__":
