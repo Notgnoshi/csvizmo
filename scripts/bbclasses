@@ -1,0 +1,466 @@
+#!/usr/bin/env python3
+"""Generate a Mermaid dependency graph of all files involved in building a BitBake recipe.
+
+Uses bb.tinfoil to parse the recipe and discover nodes (files), then manually parses
+those files to discover edges (inherit/require/include relationships).
+"""
+
+import argparse
+import logging
+import os
+import re
+import sys
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "recipe",
+        help="Recipe name (e.g. 'gzip') or path to a .bb file",
+    )
+    parser.add_argument(
+        "--no-filter-base",
+        "-n",
+        action="store_true",
+        help="Disable filtering of base BitBake infrastructure noise",
+    )
+    parser.add_argument(
+        "--group-by-layer",
+        "-g",
+        action="store_true",
+        help="Group files into Mermaid subgraphs by meta-layer",
+    )
+    parser.add_argument(
+        "--log-level",
+        "-l",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging output level. Defaults to INFO.",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=str,
+        default=None,
+        help="Output file. Default: stdout",
+    )
+    return parser.parse_args()
+
+
+def parse_recipe(tinfoil, recipe):
+    """Parse a recipe by name or path, returning its datastore."""
+    if os.path.exists(recipe):
+        logging.info("Parsing recipe file: %s", recipe)
+        d = tinfoil.parse_recipe_file(recipe)
+    else:
+        logging.info("Parsing recipe: %s", recipe)
+        d = tinfoil.parse_recipe(recipe)
+    if d is None:
+        sys.exit(f"Failed to parse recipe: {recipe}")
+    return d
+
+
+def discover_nodes(tinfoil, d):
+    """Collect the set of all files involved in a recipe from the datastore."""
+    recipe_file = d.getVar("FILE")
+    logging.info("Recipe file: %s", recipe_file)
+
+    inherit_cache = d.getVar("__inherit_cache") or []
+    logging.info("Found %d inherited bbclasses", len(inherit_cache))
+    for path in inherit_cache:
+        logging.debug("  bbclass: %s", path)
+
+    depends = d.getVar("__depends") or []
+    dep_files = [
+        filepath
+        for filepath, _mtime in depends
+        if any(filepath.endswith(ext) for ext in (".bb", ".inc", ".bbappend"))
+    ]
+    logging.info("Found %d file dependencies", len(dep_files))
+    for path in dep_files:
+        logging.debug("  dep: %s", path)
+
+    appends = tinfoil.get_file_appends(recipe_file)
+    logging.info("Found %d appends", len(appends))
+    for path in appends:
+        logging.debug("  append: %s", path)
+
+    global_inherits = (d.getVar("INHERIT") or "").split()
+    logging.info("Found %d global INHERIT classes", len(global_inherits))
+    for name in global_inherits:
+        logging.debug("  INHERIT: %s", name)
+
+    bblayers = (d.getVar("BBLAYERS") or "").split()
+    common_prefix = os.path.commonpath(bblayers) + "/" if bblayers else "/"
+    logging.info("Common layer prefix: %s", common_prefix)
+
+    all_paths = {recipe_file}
+    all_paths.update(inherit_cache)
+    all_paths.update(dep_files)
+    all_paths.update(appends)
+    exists = {p for p in all_paths if os.path.isfile(p)}
+    skipped = all_paths - exists
+    if skipped:
+        logging.debug("Skipped %d non-existent files", len(skipped))
+        for path in sorted(skipped):
+            logging.debug("  skipped: %s", path)
+
+    inherit_cache = [p for p in inherit_cache if p in exists]
+    dep_files = [p for p in dep_files if p in exists]
+    appends = [p for p in appends if p in exists]
+    logging.info("Total node count: %d", len(exists))
+    return (
+        exists,
+        recipe_file,
+        inherit_cache,
+        dep_files,
+        appends,
+        global_inherits,
+        bblayers,
+        common_prefix,
+    )
+
+
+# Edge discovery helpers
+
+
+def preprocess(text):
+    """Prepare file contents for directive scanning.
+
+    Strips comment lines and joins backslash-continuation lines.
+    """
+    lines = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue
+        lines.append(line)
+    joined = "\n".join(lines)
+    return joined.replace("\\\n", " ")
+
+
+def build_class_lookup(inherit_cache):
+    """Build a dict mapping bare class names to full paths.
+
+    e.g. {"native": "/path/to/meta/classes/native.bbclass", ...}
+    """
+    lookup = {}
+    for path in inherit_cache:
+        basename = os.path.basename(path)
+        name = basename.removesuffix(".bbclass")
+        lookup[name] = path
+    return lookup
+
+
+def expand_names(token, d):
+    """Expand a token that may contain ${...} variable references.
+
+    Returns a list of individual names after expansion and splitting.
+    """
+    if "$" not in token:
+        return [token]
+    try:
+        expanded = d.expand(token)
+    except Exception:
+        logging.warning("Could not expand variable: %s", token)
+        return []
+    return expanded.split()
+
+
+def resolve_inherit(name, class_lookup):
+    """Resolve a single inherit class name to its full path, or None."""
+    result = class_lookup.get(name)
+    if result is None:
+        logging.warning("Could not resolve inherit: %s", name)
+    return result
+
+
+def resolve_include(ref, nodes, d):
+    """Resolve a require/include path to a node in the set by suffix match, or None."""
+    if "$" in ref:
+        try:
+            ref = d.expand(ref)
+        except Exception:
+            logging.warning("Could not expand variable in include: %s", ref)
+            return None
+    matches = [n for n in nodes if n.endswith("/" + ref) or n == ref]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        logging.warning("Ambiguous include ref '%s', matched %d nodes", ref, len(matches))
+    else:
+        logging.warning("Could not resolve include: %s", ref)
+    return None
+
+
+INHERIT_RE = re.compile(r"^(inherit(?:_defer)?)\s+(.+)", re.MULTILINE)
+REQUIRE_INCLUDE_RE = re.compile(r"^(require|include)\s+(.+)", re.MULTILINE)
+
+
+def split_tokens(text):
+    """Split a string on whitespace, respecting ${...} brace nesting."""
+    tokens = []
+    current = []
+    depth = 0
+    for char in text:
+        if char == "$" or (depth > 0 and char == "{"):
+            if char == "{":
+                depth += 1
+            current.append(char)
+        elif depth > 0 and char == "}":
+            depth -= 1
+            current.append(char)
+        elif depth == 0 and char in (" ", "\t"):
+            if current:
+                tokens.append("".join(current))
+                current = []
+        else:
+            if char == "{" and current and current[-1] == "$":
+                depth += 1
+            current.append(char)
+    if current:
+        tokens.append("".join(current))
+    return tokens
+
+
+def scan_file(source, nodes, class_lookup, d):
+    """Parse a single file for inherit/require/include directives, returning edges."""
+    edges = []
+    try:
+        text = preprocess(open(source).read())
+    except OSError:
+        logging.warning("Could not read file: %s", source)
+        return edges
+
+    for match in INHERIT_RE.finditer(text):
+        edge_type = match.group(1)
+        for token in split_tokens(match.group(2)):
+            for name in expand_names(token, d):
+                target = resolve_inherit(name, class_lookup)
+                if target and target in nodes:
+                    edges.append((target, source, edge_type))
+
+    for match in REQUIRE_INCLUDE_RE.finditer(text):
+        edge_type = match.group(1)
+        ref = match.group(2).strip()
+        target = resolve_include(ref, nodes, d)
+        if target:
+            edges.append((target, source, edge_type))
+
+    return edges
+
+
+def discover_edges(nodes, recipe_file, inherit_cache, depends, appends, global_inherits, d):
+    """Discover edges by scanning the recipe, its inherited classes, and its dependencies."""
+    class_lookup = build_class_lookup(inherit_cache)
+    edges = []
+
+    # Global INHERIT classes (from local.conf / bitbake.conf / layer.conf)
+    for token in global_inherits:
+        for name in expand_names(token, d):
+            target = resolve_inherit(name, class_lookup)
+            if target and target in nodes:
+                edges.append((target, recipe_file, "INHERIT"))
+
+    # Scan the recipe file itself
+    edges.extend(scan_file(recipe_file, nodes, class_lookup, d))
+
+    # Scan each inherited bbclass
+    for path in inherit_cache:
+        edges.extend(scan_file(path, nodes, class_lookup, d))
+
+    # Scan each file dependency (.bb, .inc, .bbappend)
+    for path in depends:
+        edges.extend(scan_file(path, nodes, class_lookup, d))
+
+    # Synthetic appends edges
+    for append in appends:
+        if append in nodes:
+            edges.append((recipe_file, append, "appends"))
+
+    return edges
+
+
+BASE_FILTER_BASENAMES = {
+    "base.bbclass",
+    "bblayers.conf",
+    "bitbake.conf",
+    "insane.bbclass",
+    "license.bbclass",
+    "local.conf",
+    "logging.bbclass",
+    "metadata_scm.bbclass",
+    "mirrors.bbclass",
+    "patch.bbclass",
+    "sanity.bbclass",
+    "sstate.bbclass",
+    "staging.bbclass",
+    "utility-tasks.bbclass",
+    "utils.bbclass",
+}
+
+
+def filter_base_infrastructure(nodes, edges):
+    """Remove base BitBake infrastructure files and their edges."""
+    filtered_nodes = set()
+    for path in nodes:
+        basename = os.path.basename(path)
+        if basename in BASE_FILTER_BASENAMES:
+            logging.debug("Filtering base infrastructure: %s", path)
+            continue
+        if path.endswith(".conf"):
+            logging.debug("Filtering conf file: %s", path)
+            continue
+        filtered_nodes.add(path)
+    filtered_edges = [
+        (src, tgt, etype)
+        for src, tgt, etype in edges
+        if src in filtered_nodes and tgt in filtered_nodes
+    ]
+    return filtered_nodes, filtered_edges
+
+
+# Mermaid output helpers
+
+_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_./\-]")
+
+
+def sanitize_mermaid_id(path):
+    """Convert a file path into a valid Mermaid node ID."""
+    node_id = _SANITIZE_RE.sub("_", path)
+    if node_id and node_id[0].isdigit():
+        node_id = "_" + node_id
+    return node_id
+
+
+def escape_label(text):
+    """Escape a label for use inside Mermaid quoted strings."""
+    return text.replace("&", "&amp;").replace('"', "&quot;")
+
+
+def strip_prefix(path, prefix):
+    """Strip a common prefix from a path, returning the relative remainder."""
+    if path.startswith(prefix):
+        return path[len(prefix) :]
+    return path
+
+
+def node_shape(path, label):
+    """Return the Mermaid node definition with the appropriate shape."""
+    escaped = escape_label(label)
+    if path.endswith(".bb"):
+        return f'["{escaped}"]'
+    elif path.endswith(".bbclass"):
+        return f'{{{{"{escaped}"}}}}'
+    elif path.endswith(".bbappend"):
+        return f'(["{escaped}"])'
+    elif path.endswith(".inc"):
+        return f'[["{escaped}"]]'
+    else:
+        return f'["{escaped}"]'
+
+
+def classify_layers(nodes, bblayers):
+    """Group nodes by layer using longest-prefix match against BBLAYERS."""
+    layers = {}
+    for path in sorted(nodes):
+        best = None
+        for layer in bblayers:
+            if path.startswith(layer + "/") and (best is None or len(layer) > len(best)):
+                best = layer
+        layer_name = os.path.basename(best) if best else "other"
+        layers.setdefault(layer_name, []).append(path)
+    return layers
+
+
+def emit_node(path, common_prefix, indent, out):
+    """Emit a single Mermaid node definition."""
+    rel = strip_prefix(path, common_prefix)
+    node_id = sanitize_mermaid_id(rel)
+    shape = node_shape(rel, label=rel)
+    out.write(f"{indent}{node_id}{shape}\n")
+
+
+def emit_mermaid(nodes, edges, common_prefix, bblayers, group_by_layer, out):
+    """Write a Mermaid flowchart to the given file object."""
+    # Normal inheritance diagrams are TB, but LR diagrams render better when there's lots of nodes
+    out.write("flowchart LR\n")
+
+    if group_by_layer:
+        layers = classify_layers(nodes, bblayers)
+        for layer_name in sorted(layers):
+            paths = layers[layer_name]
+            if len(paths) > 1:
+                layer_id = sanitize_mermaid_id(layer_name)
+                out.write(f"    subgraph {layer_id}[{layer_name}]\n")
+                for path in paths:
+                    emit_node(path, common_prefix, "        ", out)
+                out.write("    end\n")
+            else:
+                emit_node(paths[0], common_prefix, "    ", out)
+    else:
+        for path in sorted(nodes):
+            emit_node(path, common_prefix, "    ", out)
+
+    for source, target, edge_type in sorted(edges):
+        src_id = sanitize_mermaid_id(strip_prefix(source, common_prefix))
+        tgt_id = sanitize_mermaid_id(strip_prefix(target, common_prefix))
+        escaped_type = escape_label(edge_type)
+        out.write(f'    {src_id} -->|"{escaped_type}"| {tgt_id}\n')
+
+
+def main(args):
+    try:
+        import bb.tinfoil
+    except ImportError:
+        sys.exit(
+            "Could not import bb.tinfoil. "
+            "Make sure you have sourced the OE build environment "
+            "(e.g. 'source oe-init-build-env')."
+        )
+
+    saved_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        with bb.tinfoil.Tinfoil(output=sys.stderr) as tinfoil:
+            tinfoil.prepare(config_only=False)
+            d = parse_recipe(tinfoil, args.recipe)
+            (
+                nodes,
+                recipe_file,
+                inherit_cache,
+                depends,
+                appends,
+                global_inherits,
+                bblayers,
+                common_prefix,
+            ) = discover_nodes(tinfoil, d)
+            edges = discover_edges(
+                nodes, recipe_file, inherit_cache, depends, appends, global_inherits, d
+            )
+    finally:
+        sys.stdout = saved_stdout
+
+    if not args.no_filter_base:
+        nodes, edges = filter_base_infrastructure(nodes, edges)
+
+    if args.output:
+        with open(args.output, "w") as f:
+            emit_mermaid(nodes, edges, common_prefix, bblayers, args.group_by_layer, f)
+        logging.info("Wrote output to %s", args.output)
+    else:
+        emit_mermaid(nodes, edges, common_prefix, bblayers, args.group_by_layer, sys.stdout)
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    logging.basicConfig(
+        format="%(asctime)s %(module)s %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z",
+        level=args.log_level,
+        stream=sys.stderr,
+    )
+    main(args)
