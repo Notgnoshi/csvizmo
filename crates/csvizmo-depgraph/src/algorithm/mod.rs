@@ -3,6 +3,7 @@ pub mod cycles;
 pub mod filter;
 pub mod flatten;
 pub mod merge;
+pub mod query;
 pub mod reverse;
 pub mod select;
 pub mod shorten;
