@@ -223,6 +223,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "dot")]
     fn quote_unquote_roundtrip() {
         let cases = [
             "hello",
