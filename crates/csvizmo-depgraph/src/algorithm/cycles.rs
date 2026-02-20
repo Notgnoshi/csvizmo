@@ -33,7 +33,7 @@ pub fn cycles(graph: &DepGraph, _args: &CyclesArgs) -> eyre::Result<DepGraph> {
     }
 
     // Map each cycle node to its SCC index.
-    let mut node_to_scc: HashMap<NodeIndex, usize> = HashMap::new();
+    let mut node_to_scc = HashMap::new();
     for (i, scc) in cycle_sccs.iter().enumerate() {
         for &node in scc {
             node_to_scc.insert(node, i);

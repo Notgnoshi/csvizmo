@@ -10,8 +10,12 @@ use crate::{DepGraph, FlatGraphView};
 #[derive(Clone, Debug, Default, Parser)]
 pub struct BetweenArgs {
     /// Glob pattern selecting query endpoints (can be repeated, OR logic)
-    #[clap(short, long)]
-    pub pattern: Vec<String>,
+    #[clap(short = 'g', long)]
+    pub include: Vec<String>,
+
+    /// Glob pattern to exclude nodes from result (can be repeated, OR logic)
+    #[clap(short = 'x', long)]
+    pub exclude: Vec<String>,
 
     /// Match patterns against 'id' or 'label'
     #[clap(long, default_value_t = MatchKey::default())]
@@ -19,8 +23,13 @@ pub struct BetweenArgs {
 }
 
 impl BetweenArgs {
-    pub fn pattern(mut self, p: impl Into<String>) -> Self {
-        self.pattern.push(p.into());
+    pub fn include(mut self, p: impl Into<String>) -> Self {
+        self.include.push(p.into());
+        self
+    }
+
+    pub fn exclude(mut self, p: impl Into<String>) -> Self {
+        self.exclude.push(p.into());
         self
     }
 
@@ -36,7 +45,7 @@ impl BetweenArgs {
 /// then for each ordered pair (qi, qj) collects nodes on directed paths from qi to qj
 /// via `forward(qi) & backward(qj)`. The union of all pairwise results is the keep set.
 pub fn between(graph: &DepGraph, args: &BetweenArgs) -> eyre::Result<DepGraph> {
-    let globset = build_globset(&args.pattern)?;
+    let globset = build_globset(&args.include)?;
     let view = FlatGraphView::new(graph);
 
     // Match query nodes by glob pattern (OR logic).
@@ -83,6 +92,22 @@ pub fn between(graph: &DepGraph, args: &BetweenArgs) -> eyre::Result<DepGraph> {
                 if bwd.contains(&node) {
                     keep.insert(node);
                 }
+            }
+        }
+    }
+
+    // Remove nodes matching --exclude patterns from keep set.
+    if !args.exclude.is_empty() {
+        let exclude_globset = build_globset(&args.exclude)?;
+        for (id, info) in graph.all_nodes() {
+            let text = match args.key {
+                MatchKey::Id => id.as_str(),
+                MatchKey::Label => info.label.as_str(),
+            };
+            if exclude_globset.is_match(text)
+                && let Some(&idx) = view.id_to_idx.get(id.as_str())
+            {
+                keep.remove(&idx);
             }
         }
     }
@@ -138,7 +163,7 @@ mod tests {
     fn direct_path() {
         // a -> b: between a and b yields both
         let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b")], vec![]);
-        let args = BetweenArgs::default().pattern("a").pattern("b");
+        let args = BetweenArgs::default().include("a").include("b");
         let result = between(&g, &args).unwrap();
         assert_eq!(sorted_node_ids(&result), vec!["a", "b"]);
         assert_eq!(sorted_edge_pairs(&result), vec![("a", "b")]);
@@ -152,7 +177,7 @@ mod tests {
             &[("a", "b"), ("b", "c")],
             vec![],
         );
-        let args = BetweenArgs::default().pattern("a").pattern("c");
+        let args = BetweenArgs::default().include("a").include("c");
         let result = between(&g, &args).unwrap();
         assert_eq!(sorted_node_ids(&result), vec!["a", "b", "c"]);
         assert_eq!(sorted_edge_pairs(&result), vec![("a", "b"), ("b", "c")]);
@@ -166,7 +191,7 @@ mod tests {
             &[("a", "b"), ("c", "d")],
             vec![],
         );
-        let args = BetweenArgs::default().pattern("a").pattern("c");
+        let args = BetweenArgs::default().include("a").include("c");
         let result = between(&g, &args).unwrap();
         assert!(result.nodes.is_empty());
         assert!(result.edges.is_empty());
@@ -180,7 +205,7 @@ mod tests {
             &[("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")],
             vec![],
         );
-        let args = BetweenArgs::default().pattern("a").pattern("d");
+        let args = BetweenArgs::default().include("a").include("d");
         let result = between(&g, &args).unwrap();
         assert_eq!(sorted_node_ids(&result), vec!["a", "b", "c", "d"]);
         assert_eq!(
@@ -198,9 +223,9 @@ mod tests {
             vec![],
         );
         let args = BetweenArgs::default()
-            .pattern("a")
-            .pattern("b")
-            .pattern("d");
+            .include("a")
+            .include("b")
+            .include("d");
         let result = between(&g, &args).unwrap();
         assert_eq!(sorted_node_ids(&result), vec!["a", "b", "c", "d"]);
     }
@@ -208,7 +233,7 @@ mod tests {
     #[test]
     fn no_match_returns_empty() {
         let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b")], vec![]);
-        let args = BetweenArgs::default().pattern("nonexistent");
+        let args = BetweenArgs::default().include("nonexistent");
         let result = between(&g, &args).unwrap();
         assert!(result.nodes.is_empty());
         assert!(result.edges.is_empty());
@@ -218,7 +243,7 @@ mod tests {
     fn single_match_returns_empty() {
         // Only one node matches -- need at least 2 for a path
         let g = make_graph(&[("a", "a"), ("b", "b")], &[("a", "b")], vec![]);
-        let args = BetweenArgs::default().pattern("a");
+        let args = BetweenArgs::default().include("a");
         let result = between(&g, &args).unwrap();
         assert!(result.nodes.is_empty());
         assert!(result.edges.is_empty());
@@ -232,7 +257,7 @@ mod tests {
             &[("a", "b"), ("b", "c"), ("c", "a")],
             vec![],
         );
-        let args = BetweenArgs::default().pattern("a").pattern("c");
+        let args = BetweenArgs::default().include("a").include("c");
         let result = between(&g, &args).unwrap();
         assert_eq!(sorted_node_ids(&result), vec!["a", "b", "c"]);
     }
@@ -241,8 +266,8 @@ mod tests {
     fn match_by_id() {
         let g = make_graph(&[("1", "libfoo"), ("2", "libbar")], &[("1", "2")], vec![]);
         let args = BetweenArgs::default()
-            .pattern("1")
-            .pattern("2")
+            .include("1")
+            .include("2")
             .key(MatchKey::Id);
         let result = between(&g, &args).unwrap();
         assert_eq!(sorted_node_ids(&result), vec!["1", "2"]);
@@ -257,7 +282,7 @@ mod tests {
             &[("a", "b"), ("b", "c"), ("d", "e")],
             vec![],
         );
-        let args = BetweenArgs::default().pattern("a").pattern("c");
+        let args = BetweenArgs::default().include("a").include("c");
         let result = between(&g, &args).unwrap();
         assert_eq!(sorted_node_ids(&result), vec!["a", "b", "c"]);
         assert_eq!(sorted_edge_pairs(&result), vec![("a", "b"), ("b", "c")]);
@@ -271,9 +296,26 @@ mod tests {
             &[("a", "b"), ("b", "c")],
             vec![],
         );
-        let args = BetweenArgs::default().pattern("?");
+        let args = BetweenArgs::default().include("?");
         let result = between(&g, &args).unwrap();
         assert_eq!(sorted_node_ids(&result), vec!["a", "b", "c"]);
         assert_eq!(sorted_edge_pairs(&result), vec![("a", "b"), ("b", "c")]);
+    }
+
+    #[test]
+    fn exclude_removes_from_result() {
+        // a -> b -> c: between a and c, exclude b
+        let g = make_graph(
+            &[("a", "a"), ("b", "b"), ("c", "c")],
+            &[("a", "b"), ("b", "c")],
+            vec![],
+        );
+        let args = BetweenArgs::default()
+            .include("a")
+            .include("c")
+            .exclude("b");
+        let result = between(&g, &args).unwrap();
+        assert_eq!(sorted_node_ids(&result), vec!["a", "c"]);
+        assert!(sorted_edge_pairs(&result).is_empty());
     }
 }

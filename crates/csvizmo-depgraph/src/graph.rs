@@ -202,7 +202,7 @@ impl<'a> FlatGraphView<'a> {
         max_depth: Option<usize>,
     ) -> HashSet<NodeIndex> {
         let mut visited = HashSet::new();
-        let mut queue: VecDeque<(NodeIndex, usize)> = VecDeque::new();
+        let mut queue = VecDeque::new();
         for seed in seeds {
             if visited.insert(seed) {
                 queue.push_back((seed, 0));

@@ -65,7 +65,7 @@ pub fn parse(input: &str) -> eyre::Result<DepGraph> {
     });
 
     // Collect which nodes belong to subgraphs so we can partition them.
-    let mut subgraph_node_ids: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut subgraph_node_ids = std::collections::HashSet::new();
     for sg in &graph.subgraphs {
         for node_id in &sg.nodes {
             subgraph_node_ids.insert(node_id.as_str());

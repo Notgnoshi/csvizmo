@@ -63,8 +63,8 @@ pub fn walk(graph: &DepGraph, visitor: &mut dyn TreeVisitor) -> eyre::Result<()>
         .filter(|n| !targets.contains(n))
         .collect();
 
-    let mut visited: HashSet<&str> = HashSet::new();
-    let mut in_progress: HashSet<&str> = HashSet::new();
+    let mut visited = HashSet::new();
+    let mut in_progress = HashSet::new();
 
     let root_count = roots.len();
     for (i, root) in roots.iter().enumerate() {

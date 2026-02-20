@@ -161,7 +161,7 @@ fn remap_graph(
     id_map: &IndexMap<String, String>,
     label_map: &IndexMap<String, String>,
 ) -> DepGraph {
-    let mut placed: HashSet<String> = HashSet::new();
+    let mut placed = HashSet::new();
     remap_inner(graph, id_map, label_map, &mut placed)
 }
 
@@ -194,7 +194,7 @@ fn remap_inner(
         .filter(|sg| !sg.nodes.is_empty() || !sg.subgraphs.is_empty())
         .collect();
 
-    let mut seen_edges: HashSet<(String, String, Option<String>)> = HashSet::new();
+    let mut seen_edges = HashSet::new();
     let edges: Vec<Edge> = graph
         .edges
         .iter()

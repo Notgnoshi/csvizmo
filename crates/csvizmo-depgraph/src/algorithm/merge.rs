@@ -13,7 +13,7 @@ pub fn merge(graphs: &[DepGraph]) -> DepGraph {
     let mut nodes: IndexMap<String, NodeInfo> = IndexMap::new();
     let mut edge_map: IndexMap<(String, String), Edge> = IndexMap::new();
     let mut named_subgraphs: IndexMap<String, Vec<DepGraph>> = IndexMap::new();
-    let mut unnamed_subgraphs: Vec<DepGraph> = Vec::new();
+    let mut unnamed_subgraphs = Vec::new();
 
     for graph in graphs {
         for (id, info) in &graph.nodes {
@@ -46,7 +46,7 @@ pub fn merge(graphs: &[DepGraph]) -> DepGraph {
         }
     }
 
-    let mut subgraphs: Vec<DepGraph> = Vec::new();
+    let mut subgraphs = Vec::new();
     for (id, sgs) in named_subgraphs {
         let mut merged = merge(&sgs);
         merged.id = Some(id);

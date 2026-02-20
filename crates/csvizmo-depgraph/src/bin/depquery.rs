@@ -1,19 +1,17 @@
-use std::io::{IsTerminal, Read};
+use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use csvizmo_depgraph::algorithm;
-use csvizmo_depgraph::algorithm::between::BetweenArgs;
-use csvizmo_depgraph::algorithm::cycles::CyclesArgs;
-use csvizmo_depgraph::algorithm::select::SelectArgs;
-use csvizmo_depgraph::emit::OutputFormat;
+use csvizmo_depgraph::algorithm::query::edges::EdgesArgs;
+use csvizmo_depgraph::algorithm::query::nodes::NodesArgs;
+use csvizmo_depgraph::algorithm::query::{OutputFields, metrics};
 use csvizmo_depgraph::parse::InputFormat;
-use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
+use csvizmo_utils::stdio::get_input_reader;
 
-/// Select or exclude nodes from dependency graphs.
+/// Query properties of dependency graphs.
 ///
-/// Operations are performed via select, between, or cycles subcommands.
-/// Chain operations by piping: depfilter ... | depfilter ...
+/// Produces plain text output (not graph output) answering
+/// "what's in this graph?" -- listing nodes, edges, and computing metrics.
 #[derive(Debug, Parser)]
 #[clap(version, verbatim_doc_comment)]
 struct Args {
@@ -29,26 +27,18 @@ struct Args {
     #[clap(short = 'I', long, global = true)]
     input_format: Option<InputFormat>,
 
-    /// Output file (stdout if '-' or omitted)
-    #[clap(short, long, global = true)]
-    output: Option<PathBuf>,
-
-    /// Output format (auto-detected from extension, defaults to DOT)
-    #[clap(short = 'O', long, global = true)]
-    output_format: Option<OutputFormat>,
-
     #[clap(subcommand)]
     command: Command,
 }
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Select nodes matching patterns and optionally their deps/rdeps
-    Select(SelectArgs),
-    /// Extract the subgraph of all directed paths between matched query nodes
-    Between(BetweenArgs),
-    /// Detect cycles (strongly connected components) and output each as a subgraph
-    Cycles(CyclesArgs),
+    /// List nodes with optional filtering and sorting
+    Nodes(NodesArgs),
+    /// List edges with optional filtering and sorting
+    Edges(EdgesArgs),
+    /// Compute and display graph metrics
+    Metrics,
 }
 
 fn main() -> eyre::Result<()> {
@@ -72,7 +62,6 @@ fn main() -> eyre::Result<()> {
     // Normalize `-` to None -- it means stdio, not a file path.
     let is_stdio = |p: &PathBuf| p.as_os_str() == "-";
     let input_path = args.input.filter(|p| !is_stdio(p));
-    let output_path = args.output.filter(|p| !is_stdio(p));
 
     let mut input = get_input_reader(&input_path)?;
     let mut input_text = String::new();
@@ -83,8 +72,6 @@ fn main() -> eyre::Result<()> {
         input_path.as_deref(),
         &input_text,
     )?;
-    let output_format =
-        csvizmo_depgraph::emit::resolve_output_format(args.output_format, output_path.as_deref())?;
 
     let graph = csvizmo_depgraph::parse::parse(input_format, &input_text)?;
     tracing::info!(
@@ -94,14 +81,37 @@ fn main() -> eyre::Result<()> {
         graph.subgraphs.len()
     );
 
-    let graph = match &args.command {
-        Command::Select(select_args) => algorithm::select::select(&graph, select_args)?,
-        Command::Between(between_args) => algorithm::between::between(&graph, between_args)?,
-        Command::Cycles(cycles_args) => algorithm::cycles::cycles(&graph, cycles_args)?,
-    };
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
 
-    let mut output = get_output_writer(&output_path)?;
-    csvizmo_depgraph::emit::emit(output_format, &graph, &mut output)?;
+    match &args.command {
+        Command::Nodes(nodes_args) => {
+            let result = csvizmo_depgraph::algorithm::query::nodes::nodes(&graph, nodes_args)?;
+            for (id, label, count) in &result {
+                let field = match nodes_args.format {
+                    OutputFields::Id => id.as_str(),
+                    OutputFields::Label => label.as_str(),
+                };
+                match count {
+                    Some(n) => writeln!(out, "{field}\t{n}")?,
+                    None => writeln!(out, "{field}")?,
+                }
+            }
+        }
+        Command::Edges(edges_args) => {
+            let result = csvizmo_depgraph::algorithm::query::edges::edges(&graph, edges_args)?;
+            for (source, target, label) in &result {
+                match label {
+                    Some(l) if !l.is_empty() => writeln!(out, "{source}\t{target}\t{l}")?,
+                    _ => writeln!(out, "{source}\t{target}")?,
+                }
+            }
+        }
+        Command::Metrics => {
+            let m = metrics::metrics(&graph);
+            write!(out, "{m}")?;
+        }
+    }
 
     Ok(())
 }

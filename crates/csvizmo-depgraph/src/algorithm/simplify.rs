@@ -26,7 +26,7 @@ pub fn simplify(graph: &DepGraph) -> eyre::Result<DepGraph> {
     let (reduction, _closure) = dag_transitive_reduction_closure(&adj);
 
     // Build set of edges to keep: (from_id, to_id) pairs present in the reduction.
-    let mut keep_edges: HashSet<(&str, &str)> = HashSet::new();
+    let mut keep_edges = HashSet::new();
     for from_topo in 0..reduction.node_count() {
         let from_id = view.idx_to_id[sorted[from_topo].index()];
         for to_topo in reduction.neighbors(from_topo as u32) {
