@@ -21,6 +21,7 @@ Gizmos for working with CSVs
 * [canspam](#canspam) -- generate random CAN traffic
 * [canstruct](#canstruct) -- reconstruct NMEA 2000 Fast Packet / ISO 11783-3 Transport Protocol
   sessions
+* [depquery](#depquery) -- query properties of dependency graphs
 * [bbclasses](#bbclasses) -- generate BitBake recipe inheritance diagrams
 
 # Philosophy
@@ -313,6 +314,30 @@ $ cat data/depconv/bitbake.curl.task-depends.dot |
 > [!NOTE]
 >
 > The `deptransform` tool shares the same GPL-2.0 license caveat as `depconv` with respect to DOT
+> parsing.
+
+## depquery
+
+Query properties of dependency graphs. Lists nodes, edges, and computes graph metrics. Supports the
+same input formats as `depconv`, and is designed to be used in pipelines.
+
+```sh
+# Show the 5 crates with the most dependencies:
+$ cargo metadata --format-version=1 |
+    depquery nodes --sort out-degree --limit 5
+csvizmo-depgraph	20
+csvizmo-stats	16
+csvizmo-can	12
+csvizmo-minpath	11
+tracing-subscriber	10
+```
+
+The `depquery` tool supports outputting `nodes`, `edges`, and `metrics`. The output is intended to
+be machine-readable, and is tab-separated.
+
+> [!NOTE]
+>
+> The `depquery` tool shares the same GPL-2.0 license caveat as `depconv` with respect to DOT
 > parsing.
 
 ## can2csv
