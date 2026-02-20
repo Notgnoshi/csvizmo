@@ -1,6 +1,5 @@
 pub mod between;
 pub mod cycles;
-pub mod filter;
 pub mod flatten;
 pub mod merge;
 pub mod query;

@@ -5,15 +5,14 @@ use clap::{Parser, Subcommand};
 use csvizmo_depgraph::algorithm;
 use csvizmo_depgraph::algorithm::between::BetweenArgs;
 use csvizmo_depgraph::algorithm::cycles::CyclesArgs;
-use csvizmo_depgraph::algorithm::filter::FilterArgs;
 use csvizmo_depgraph::algorithm::select::SelectArgs;
 use csvizmo_depgraph::emit::OutputFormat;
 use csvizmo_depgraph::parse::InputFormat;
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
 
-/// Filter or select nodes from dependency graphs.
+/// Select or exclude nodes from dependency graphs.
 ///
-/// Operations are performed via select or filter subcommands.
+/// Operations are performed via select, between, or cycles subcommands.
 /// Chain operations by piping: depfilter ... | depfilter ...
 #[derive(Debug, Parser)]
 #[clap(version, verbatim_doc_comment)]
@@ -46,8 +45,6 @@ struct Args {
 enum Command {
     /// Select nodes matching patterns and optionally their deps/rdeps
     Select(SelectArgs),
-    /// Remove nodes matching patterns and optionally cascade to deps/rdeps
-    Filter(FilterArgs),
     /// Extract the subgraph of all directed paths between matched query nodes
     Between(BetweenArgs),
     /// Detect cycles (strongly connected components) and output each as a subgraph
@@ -99,7 +96,6 @@ fn main() -> eyre::Result<()> {
 
     let graph = match &args.command {
         Command::Select(select_args) => algorithm::select::select(&graph, select_args)?,
-        Command::Filter(filter_args) => algorithm::filter::filter(&graph, filter_args)?,
         Command::Between(between_args) => algorithm::between::between(&graph, between_args)?,
         Command::Cycles(cycles_args) => algorithm::cycles::cycles(&graph, cycles_args)?,
     };

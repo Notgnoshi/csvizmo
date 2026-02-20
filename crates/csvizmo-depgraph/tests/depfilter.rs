@@ -10,7 +10,7 @@ fn select_single_pattern() {
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
+            "--include",
             "lib*",
             "--input-format",
             "tgf",
@@ -30,7 +30,7 @@ fn select_by_id() {
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
+            "--include",
             "1",
             "--key",
             "id",
@@ -53,7 +53,7 @@ fn select_with_deps() {
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
+            "--include",
             "myapp",
             "--deps",
             "--input-format",
@@ -76,7 +76,7 @@ fn select_with_rdeps() {
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
+            "--include",
             "libbar",
             "--rdeps",
             "--input-format",
@@ -101,7 +101,7 @@ fn select_with_depth() {
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
+            "--include",
             "a",
             "--deps",
             "--depth",
@@ -149,9 +149,9 @@ fn select_multiple_patterns_and() {
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
+            "--include",
             "libfoo*",
-            "--pattern",
+            "--include",
             "*alpha",
             "--and",
             "--input-format",
@@ -175,7 +175,7 @@ fn select_with_deps_and_rdeps() {
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
+            "--include",
             "b",
             "--deps",
             "--rdeps",
@@ -192,14 +192,14 @@ fn select_with_deps_and_rdeps() {
     assert_eq!(stdout, "a\nb\nc\nd\n#\na\tb\nb\tc\nc\td\n");
 }
 
-// -- filter integration tests: one per CLI flag --
+// -- exclude integration tests --
 
 #[test]
-fn filter_single_pattern() {
+fn exclude_single_pattern() {
     let output = tool!("depfilter")
         .args([
-            "filter",
-            "--pattern",
+            "select",
+            "--exclude",
             "libfoo",
             "--input-format",
             "tgf",
@@ -215,101 +215,11 @@ fn filter_single_pattern() {
 }
 
 #[test]
-fn filter_with_and() {
-    let graph = "libfoo-alpha\nlibfoo-beta\nlibbar-alpha\n#\n";
+fn exclude_by_id() {
     let output = tool!("depfilter")
         .args([
-            "filter",
-            "--pattern",
-            "libfoo*",
-            "--pattern",
-            "*alpha",
-            "--and",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(graph)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, "libfoo-beta\nlibbar-alpha\n#\n");
-}
-
-#[test]
-fn filter_with_deps() {
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "myapp",
-            "--deps",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(SIMPLE_GRAPH)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, "#\n");
-}
-
-#[test]
-fn filter_with_rdeps() {
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "libbar",
-            "--rdeps",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(SIMPLE_GRAPH)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, "#\n");
-}
-
-#[test]
-fn filter_with_deps_and_rdeps() {
-    // a -> b -> c, d -> c: filter b with both directions removes a, b, c but keeps d
-    let graph = "a\nb\nc\nd\n#\na\tb\nb\tc\nd\tc\n";
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
-            "b",
-            "--deps",
-            "--rdeps",
-            "--input-format",
-            "tgf",
-            "--output-format",
-            "tgf",
-        ])
-        .write_stdin(graph)
-        .captured_output()
-        .unwrap();
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, "d\n#\n");
-}
-
-#[test]
-fn filter_by_id() {
-    let output = tool!("depfilter")
-        .args([
-            "filter",
-            "--pattern",
+            "select",
+            "--exclude",
             "1",
             "--key",
             "id",
@@ -327,12 +237,12 @@ fn filter_by_id() {
 }
 
 #[test]
-fn filter_with_preserve_connectivity() {
+fn exclude_with_preserve_connectivity() {
     let chain_graph = "a\nb\nc\n#\na\tb\nb\tc\n";
     let output = tool!("depfilter")
         .args([
-            "filter",
-            "--pattern",
+            "select",
+            "--exclude",
             "b",
             "--preserve-connectivity",
             "--input-format",
@@ -349,11 +259,34 @@ fn filter_with_preserve_connectivity() {
 }
 
 #[test]
+fn exclude_multiple_patterns() {
+    let graph = "a\nb\nc\nd\n#\na\tb\nb\tc\nc\td\n";
+    let output = tool!("depfilter")
+        .args([
+            "select",
+            "--exclude",
+            "b",
+            "--exclude",
+            "c",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nd\n#\n");
+}
+
+#[test]
 fn select_dot_output() {
     let output = tool!("depfilter")
         .args([
             "select",
-            "--pattern",
+            "--include",
             "lib*",
             "--input-format",
             "tgf",
@@ -379,8 +312,8 @@ digraph {
 
 #[cfg(feature = "dot")]
 #[test]
-fn filter_preserve_connectivity_subgraph() {
-    // subgraph { a -> b -> c }: remove b, bypass a -> c stays in subgraph
+fn exclude_preserve_connectivity_subgraph() {
+    // subgraph { a -> b -> c }: exclude b, bypass a -> c stays in subgraph
     let dot_input = "\
 digraph {
     subgraph cluster_0 {
@@ -394,8 +327,8 @@ digraph {
 ";
     let output = tool!("depfilter")
         .args([
-            "filter",
-            "--pattern",
+            "select",
+            "--exclude",
             "b",
             "--preserve-connectivity",
             "--input-format",
@@ -424,7 +357,7 @@ digraph {
 
 #[cfg(feature = "dot")]
 #[test]
-fn filter_dot_input() {
+fn exclude_dot_input() {
     let dot_input = "\
 digraph {
     \"1\" [label=\"libfoo\"];
@@ -437,8 +370,8 @@ digraph {
 ";
     let output = tool!("depfilter")
         .args([
-            "filter",
-            "--pattern",
+            "select",
+            "--exclude",
             "libfoo",
             "--input-format",
             "dot",
@@ -453,6 +386,33 @@ digraph {
     assert_eq!(stdout, "2\tlibbar\n3\tmyapp\n#\n3\t2\n");
 }
 
+// -- include + exclude combined integration test --
+
+#[test]
+fn include_with_exclude() {
+    // a -> b -> c -> d: include a with deps, exclude c
+    let graph = "a\nb\nc\nd\n#\na\tb\nb\tc\nc\td\n";
+    let output = tool!("depfilter")
+        .args([
+            "select",
+            "-g",
+            "a",
+            "--deps",
+            "-x",
+            "c",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\nd\n#\na\tb\n");
+}
+
 // -- between integration tests --
 
 #[test]
@@ -462,9 +422,9 @@ fn between_two_nodes() {
     let output = tool!("depfilter")
         .args([
             "between",
-            "-p",
+            "-g",
             "a",
-            "-p",
+            "-g",
             "c",
             "--input-format",
             "tgf",
@@ -484,9 +444,9 @@ fn between_by_id() {
     let output = tool!("depfilter")
         .args([
             "between",
-            "-p",
+            "-g",
             "1",
-            "-p",
+            "-g",
             "2",
             "--key",
             "id",
@@ -510,7 +470,7 @@ fn between_glob_multiple_nodes() {
     let output = tool!("depfilter")
         .args([
             "between",
-            "-p",
+            "-g",
             "?",
             "--input-format",
             "tgf",
@@ -531,7 +491,7 @@ fn between_no_matching_patterns() {
     let output = tool!("depfilter")
         .args([
             "between",
-            "-p",
+            "-g",
             "nonexistent",
             "--input-format",
             "tgf",
@@ -553,9 +513,9 @@ fn between_no_path() {
     let output = tool!("depfilter")
         .args([
             "between",
-            "-p",
+            "-g",
             "a",
-            "-p",
+            "-g",
             "c",
             "--input-format",
             "tgf",
@@ -580,9 +540,9 @@ fn between_cargo_metadata_fixture() {
     let output = tool!("depfilter")
         .args([
             "between",
-            "-p",
+            "-g",
             "csvizmo-depgraph",
-            "-p",
+            "-g",
             "clap*",
             "--input-format",
             "cargo-metadata",

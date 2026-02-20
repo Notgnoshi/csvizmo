@@ -263,19 +263,17 @@ recover lost metadata.
 Filter or select subsets of dependency graphs. Works on the same formats as `depconv`, and is
 designed to be chained with pipes.
 
-* `depfilter select` keeps only nodes matching the given patterns
-* `depfilter filter` removes nodes matching the given patterns
+* `depfilter select` keeps nodes matching `--include` patterns and/or removes `--exclude` patterns
 * `depfilter between` select nodes connecting multiple sets of query nodes
 * `depfilter cycles` select any cycles in the graph
 
-Both subcommands have extra options to tune their behavior.
+Each subcommand has extra options to tune its behavior.
 
 ```sh
-# From a cargo dependency tree, select the subtree rooted at "clap", then filter out
-# all the proc-macro crates and their dependencies:
+# From a cargo dependency tree, select the subtree rooted at "clap", excluding
+# all the proc-macro crates:
 $ cargo tree --depth 10 \
-    | depfilter select -p "clap*" --deps -I cargo-tree -O tgf \
-    | depfilter filter -p "*derive*" -p "*proc*" --deps -I tgf -O dot
+    | depfilter select -g "clap*" --deps -x "*derive*" -x "*proc*" -I cargo-tree -O dot
 digraph {
     clap [label="v4.5.57 clap"];
     clap_builder [label="v4.5.57 clap_builder"];
