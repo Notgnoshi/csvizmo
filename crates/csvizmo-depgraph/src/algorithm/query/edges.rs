@@ -75,7 +75,7 @@ pub fn edges(
         None
     };
 
-    let mut result: Vec<(String, String, Option<String>)> = Vec::new();
+    let mut result = Vec::new();
 
     for edge in all_edges {
         let from_info = all_nodes.get(&edge.from);

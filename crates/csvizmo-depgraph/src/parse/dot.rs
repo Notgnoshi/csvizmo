@@ -250,7 +250,7 @@ fn add_edges(edge_stmt: &AstEdgeStmt, dep: &mut DepGraph) {
     }
 
     // Collect all endpoints in the chain: from -> to1 -> to2 -> ...
-    let mut endpoints: Vec<Either<&ast::NodeID, &AstSubgraph>> = Vec::new();
+    let mut endpoints = Vec::new();
     endpoints.push(edge_stmt.from.as_ref());
     let mut rhs = &edge_stmt.next;
     loop {

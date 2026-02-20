@@ -58,7 +58,7 @@ fn is_summary(line: &str) -> bool {
 pub fn parse(input: &str) -> eyre::Result<DepGraph> {
     let mut graph = DepGraph::default();
     // stack[i] = node ID (full path) of the most recent node at depth i
-    let mut stack: Vec<String> = Vec::new();
+    let mut stack = Vec::new();
 
     for raw_line in input.lines() {
         // Some `tree` builds use NO-BREAK SPACE (U+00A0) in continuation prefixes.

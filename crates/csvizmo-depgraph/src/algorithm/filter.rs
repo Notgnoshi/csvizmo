@@ -116,7 +116,7 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
             .map(|e| (e.from.clone(), e.to.clone()))
             .collect();
 
-        let mut bypass_edges: Vec<(String, String)> = Vec::new();
+        let mut bypass_edges = Vec::new();
         for &idx in &matched {
             let preds = surviving_neighbors(&view.pg, idx, Direction::Incoming, &keep);
             let succs = surviving_neighbors(&view.pg, idx, Direction::Outgoing, &keep);

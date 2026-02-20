@@ -128,7 +128,7 @@ pub fn sub(graph: &DepGraph, substitution: &Substitution, key: &SubKey) -> DepGr
 fn sub_id(graph: &DepGraph, substitution: &Substitution) -> DepGraph {
     // Build old->new ID mapping from all nodes across all subgraphs.
     let all_nodes = graph.all_nodes();
-    let mut id_map: IndexMap<String, String> = IndexMap::new();
+    let mut id_map = IndexMap::new();
     for old_id in all_nodes.keys() {
         let new_id = substitution.apply(old_id);
         id_map.insert(old_id.clone(), new_id);
@@ -184,7 +184,7 @@ fn remap_subgraph(
         .collect();
 
     // Remap edges, remove self-loops, deduplicate.
-    let mut seen_edges: HashSet<(String, String, Option<String>)> = HashSet::new();
+    let mut seen_edges = HashSet::new();
     let edges: Vec<Edge> = graph
         .edges
         .iter()
