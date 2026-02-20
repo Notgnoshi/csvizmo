@@ -71,14 +71,14 @@ fn select_with_deps() {
 }
 
 #[test]
-fn select_with_ancestors() {
+fn select_with_rdeps() {
     // Select libbar and include all nodes that depend on it
     let output = tool!("depfilter")
         .args([
             "select",
             "--pattern",
             "libbar",
-            "--ancestors",
+            "--rdeps",
             "--input-format",
             "tgf",
             "--output-format",
@@ -169,7 +169,7 @@ fn select_multiple_patterns_and() {
 }
 
 #[test]
-fn select_with_deps_and_ancestors() {
+fn select_with_deps_and_rdeps() {
     // a -> b -> c -> d: select b with both directions gets everything
     let graph = "a\nb\nc\nd\n#\na\tb\nb\tc\nc\td\n";
     let output = tool!("depfilter")
@@ -178,7 +178,7 @@ fn select_with_deps_and_ancestors() {
             "--pattern",
             "b",
             "--deps",
-            "--ancestors",
+            "--rdeps",
             "--input-format",
             "tgf",
             "--output-format",
@@ -260,13 +260,13 @@ fn filter_with_deps() {
 }
 
 #[test]
-fn filter_with_ancestors() {
+fn filter_with_rdeps() {
     let output = tool!("depfilter")
         .args([
             "filter",
             "--pattern",
             "libbar",
-            "--ancestors",
+            "--rdeps",
             "--input-format",
             "tgf",
             "--output-format",
@@ -281,7 +281,7 @@ fn filter_with_ancestors() {
 }
 
 #[test]
-fn filter_with_deps_and_ancestors() {
+fn filter_with_deps_and_rdeps() {
     // a -> b -> c, d -> c: filter b with both directions removes a, b, c but keeps d
     let graph = "a\nb\nc\nd\n#\na\tb\nb\tc\nd\tc\n";
     let output = tool!("depfilter")
@@ -290,7 +290,7 @@ fn filter_with_deps_and_ancestors() {
             "--pattern",
             "b",
             "--deps",
-            "--ancestors",
+            "--rdeps",
             "--input-format",
             "tgf",
             "--output-format",

@@ -44,9 +44,9 @@ struct Args {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Select nodes matching patterns and optionally their dependencies/ancestors
+    /// Select nodes matching patterns and optionally their deps/rdeps
     Select(SelectArgs),
-    /// Remove nodes matching patterns and optionally cascade to dependencies/ancestors
+    /// Remove nodes matching patterns and optionally cascade to deps/rdeps
     Filter(FilterArgs),
     /// Extract the subgraph of all directed paths between matched query nodes
     Between(BetweenArgs),

@@ -21,12 +21,12 @@ pub struct SelectArgs {
     pub key: MatchKey,
 
     /// Include all dependencies of selected nodes
-    #[clap(long)]
+    #[clap(long, alias = "children")]
     pub deps: bool,
 
-    /// Include all ancestors of selected nodes
-    #[clap(long)]
-    pub ancestors: bool,
+    /// Include all reverse dependencies of selected nodes
+    #[clap(long, alias = "parents", alias = "ancestors")]
+    pub rdeps: bool,
 
     /// Traverse up to N layers (implies --deps if no direction given)
     #[clap(long)]
@@ -54,8 +54,8 @@ impl SelectArgs {
         self
     }
 
-    pub fn ancestors(mut self) -> Self {
-        self.ancestors = true;
+    pub fn rdeps(mut self) -> Self {
+        self.rdeps = true;
         self
     }
 
@@ -70,7 +70,7 @@ pub fn select(graph: &DepGraph, args: &SelectArgs) -> eyre::Result<DepGraph> {
     let view = FlatGraphView::new(graph);
 
     // No filters at all -> pass through the entire graph unchanged.
-    let no_traversal = !args.deps && !args.ancestors && args.depth.is_none();
+    let no_traversal = !args.deps && !args.rdeps && args.depth.is_none();
     if args.pattern.is_empty() && no_traversal {
         return Ok(graph.clone());
     }
@@ -101,11 +101,11 @@ pub fn select(graph: &DepGraph, args: &SelectArgs) -> eyre::Result<DepGraph> {
 
     // --depth without an explicit direction implies --deps
     let deps = args.deps || args.depth.is_some();
-    if deps && args.ancestors {
+    if deps && args.rdeps {
         let seeds = keep.clone();
         keep = view.bfs(seeds.clone(), Direction::Outgoing, args.depth);
         keep.extend(view.bfs(seeds, Direction::Incoming, args.depth));
-    } else if args.ancestors {
+    } else if args.rdeps {
         keep = view.bfs(keep, Direction::Incoming, args.depth);
     } else if deps {
         keep = view.bfs(keep, Direction::Outgoing, args.depth);
@@ -251,14 +251,14 @@ mod tests {
     }
 
     #[test]
-    fn with_ancestors() {
+    fn with_rdeps() {
         // a -> b -> c
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c")],
             vec![],
         );
-        let args = SelectArgs::default().pattern("c").ancestors();
+        let args = SelectArgs::default().pattern("c").rdeps();
         let result = select(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["a", "b", "c"]);
     }
@@ -278,14 +278,14 @@ mod tests {
     }
 
     #[test]
-    fn with_deps_and_ancestors() {
-        // a -> b -> c -> d: select b with both deps and ancestors
+    fn with_deps_and_rdeps() {
+        // a -> b -> c -> d: select b with both deps and rdeps
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("c", "d")],
             vec![],
         );
-        let args = SelectArgs::default().pattern("b").deps().ancestors();
+        let args = SelectArgs::default().pattern("b").deps().rdeps();
         let result = select(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["a", "b", "c", "d"]);
         assert_eq!(
@@ -295,18 +295,14 @@ mod tests {
     }
 
     #[test]
-    fn with_deps_and_ancestors_depth_limited() {
+    fn with_deps_and_rdeps_depth_limited() {
         // a -> b -> c -> d -> e: select c with both directions, depth 1
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d"), ("e", "e")],
             &[("a", "b"), ("b", "c"), ("c", "d"), ("d", "e")],
             vec![],
         );
-        let args = SelectArgs::default()
-            .pattern("c")
-            .deps()
-            .ancestors()
-            .depth(1);
+        let args = SelectArgs::default().pattern("c").deps().rdeps().depth(1);
         let result = select(&g, &args).unwrap();
         assert_eq!(node_ids(&result), vec!["b", "c", "d"]);
         assert_eq!(edge_pairs(&result), vec![("b", "c"), ("c", "d")]);

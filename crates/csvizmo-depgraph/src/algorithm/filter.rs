@@ -22,12 +22,12 @@ pub struct FilterArgs {
     pub key: MatchKey,
 
     /// Also remove all dependencies of matched nodes (cascade)
-    #[clap(long)]
+    #[clap(long, alias = "children")]
     pub deps: bool,
 
-    /// Also remove all ancestors of matched nodes (cascade)
-    #[clap(long)]
-    pub ancestors: bool,
+    /// Also remove all reverse dependencies of matched nodes (cascade)
+    #[clap(long, alias = "parents", alias = "ancestors")]
+    pub rdeps: bool,
 
     /// Preserve graph connectivity when removing nodes
     /// (creates direct edges, no self-loops or parallel edges)
@@ -56,8 +56,8 @@ impl FilterArgs {
         self
     }
 
-    pub fn ancestors(mut self) -> Self {
-        self.ancestors = true;
+    pub fn rdeps(mut self) -> Self {
+        self.rdeps = true;
         self
     }
 
@@ -90,12 +90,12 @@ pub fn filter(graph: &DepGraph, args: &FilterArgs) -> eyre::Result<DepGraph> {
         }
     }
 
-    // Cascade removal via BFS if --deps or --ancestors is set.
-    if args.deps && args.ancestors {
+    // Cascade removal via BFS if --deps or --rdeps is set.
+    if args.deps && args.rdeps {
         let seeds = matched.clone();
         matched = view.bfs(seeds.clone(), Direction::Outgoing, None);
         matched.extend(view.bfs(seeds, Direction::Incoming, None));
-    } else if args.ancestors {
+    } else if args.rdeps {
         matched = view.bfs(matched, Direction::Incoming, None);
     } else if args.deps {
         matched = view.bfs(matched, Direction::Outgoing, None);
@@ -312,43 +312,43 @@ mod tests {
     }
 
     #[test]
-    fn with_ancestors_cascade() {
+    fn with_rdeps_cascade() {
         // a -> b -> c
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c")],
             &[("a", "b"), ("b", "c")],
             vec![],
         );
-        let args = FilterArgs::default().pattern("c").ancestors();
+        let args = FilterArgs::default().pattern("c").rdeps();
         let result = filter(&g, &args).unwrap();
         assert!(node_ids(&result).is_empty());
     }
 
     #[test]
-    fn with_deps_and_ancestors_cascade() {
-        // a -> b -> c -> d: filter b with both deps and ancestors
+    fn with_deps_and_rdeps_cascade() {
+        // a -> b -> c -> d: filter b with both deps and rdeps
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("c", "d")],
             vec![],
         );
-        let args = FilterArgs::default().pattern("b").deps().ancestors();
+        let args = FilterArgs::default().pattern("b").deps().rdeps();
         let result = filter(&g, &args).unwrap();
-        // b + ancestors (a) + deps (c, d) = all removed
+        // b + rdeps (a) + deps (c, d) = all removed
         assert!(node_ids(&result).is_empty());
     }
 
     #[test]
-    fn with_deps_and_ancestors_cascade_partial() {
+    fn with_deps_and_rdeps_cascade_partial() {
         // a -> b -> c, d -> c: filter b with both directions
         let g = make_graph(
             &[("a", "a"), ("b", "b"), ("c", "c"), ("d", "d")],
             &[("a", "b"), ("b", "c"), ("d", "c")],
             vec![],
         );
-        let args = FilterArgs::default().pattern("b").deps().ancestors();
+        let args = FilterArgs::default().pattern("b").deps().rdeps();
         let result = filter(&g, &args).unwrap();
-        // b removed, ancestors (a) removed, deps (c) removed, but d survives
+        // b removed, rdeps (a) removed, deps (c) removed, but d survives
         assert_eq!(node_ids(&result), vec!["d"]);
         assert!(edge_pairs(&result).is_empty());
     }
