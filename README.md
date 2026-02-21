@@ -22,6 +22,8 @@ Gizmos for working with CSVs
 * [canstruct](#canstruct) -- reconstruct NMEA 2000 Fast Packet / ISO 11783-3 Transport Protocol
   sessions
 * [depquery](#depquery) -- query properties of dependency graphs
+* [depcluster](#depcluster) -- cluster dependency graphs using community detection
+* [graphdiff](#graphdiff) -- compare two dependency graphs
 * [bbclasses](#bbclasses) -- generate BitBake recipe inheritance diagrams
 
 # Philosophy
@@ -251,13 +253,6 @@ Converting from a rich format (DOT, cargo metadata) to a simpler one (TGF, depfi
 unsupported attributes. Converting in the other direction preserves graph topology but cannot
 recover lost metadata.
 
-> [!NOTE]
->
-> DOT parsing requires building with `--features dot`, which pulls in the `dot-parser` crate
-> (GPL-2.0). The default build does not include this feature and is MIT-licensed. When built with
-> `--features dot`, the resulting binary is GPL-2.0. DOT _emitting_ is always available (custom
-> string formatting, no GPL dependency).
-
 ## depfilter
 
 Filter or select subsets of dependency graphs. Works on the same formats as `depconv`, and is
@@ -282,11 +277,6 @@ digraph {
 }
 ```
 
-> [!NOTE]
->
-> The `depfilter` tool shares the same GPL-2.0 license caveat as `depconv` with respect to DOT
-> parsing.
-
 ## deptransform
 
 Structural transformations on dependency graphs. Works on the same formats as `depconv`, and is
@@ -309,11 +299,6 @@ $ cat data/depconv/bitbake.curl.task-depends.dot |
     deptransform sub --key=node:label 's/.*//' |
 ```
 
-> [!NOTE]
->
-> The `deptransform` tool shares the same GPL-2.0 license caveat as `depconv` with respect to DOT
-> parsing.
-
 ## depquery
 
 Query properties of dependency graphs. Lists nodes, edges, and computes graph metrics. Supports the
@@ -333,10 +318,74 @@ tracing-subscriber	10
 The `depquery` tool supports outputting `nodes`, `edges`, and `metrics`. The output is intended to
 be machine-readable, and is tab-separated.
 
-> [!NOTE]
->
-> The `depquery` tool shares the same GPL-2.0 license caveat as `depconv` with respect to DOT
-> parsing.
+## depcluster
+
+Run community detection on a dependency graph to identify clusters of related nodes. Each cluster
+becomes a subgraph in the output, with cross-cluster edges at the top level. Supports Louvain
+(default), Leiden, and Label Propagation algorithms.
+
+```sh
+$ echo -e "a b\na c\nb c\nd e\nd f\ne f\n#\na b\na c\nb c\nd e\nd f\ne f" |
+    depcluster -I tgf -O mermaid
+```
+
+```mermaid
+flowchart LR
+    subgraph cluster_0
+        a
+        b
+        c
+        a --> b
+        a --> c
+        b --> c
+    end
+    subgraph cluster_1
+        d
+        e
+        f
+        d --> e
+        d --> f
+        e --> f
+    end
+```
+
+## graphdiff
+
+Compare two dependency graphs and report what changed. Nodes are matched by ID, and edges by their
+endpoints.
+
+`graphdiff` supports several subcommands:
+
+* `graphdiff annotate` -- output the combined graph with changes highlighted (added, removed,
+  changed nodes/edges get distinct attributes)
+* `graphdiff list` -- tab-delimited list of changes (`+` added, `-` removed, `~` changed, `>` moved)
+* `graphdiff summary` -- tab-delimited counts of each change type
+* `graphdiff subtract` -- set difference: nodes and edges only in the first graph
+
+```sh
+$ cat before.tgf
+a Alpha
+b Bravo
+#
+a b
+
+$ cat after.tgf
+b Bravo
+c Charlie
+#
+b c
+
+$ graphdiff annotate before.tgf after.tgf -O mermaid
+```
+
+```mermaid
+flowchart LR
+    b["Bravo"]
+    c["+ Charlie"]
+    a["- Alpha"]
+    b --> c
+    a --> b
+```
 
 ## can2csv
 
