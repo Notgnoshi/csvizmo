@@ -1,4 +1,5 @@
 pub mod between;
+pub mod cluster;
 pub mod cycles;
 pub mod diff;
 pub mod flatten;

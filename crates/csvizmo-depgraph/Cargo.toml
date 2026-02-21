@@ -17,9 +17,11 @@ dot-parser = { workspace = true, optional = true }
 either = { workspace = true, optional = true }
 eyre.workspace = true
 globset.workspace = true
+graphrs.workspace = true
 indexmap.workspace = true
 csvizmo-minpath.workspace = true
 petgraph.workspace = true
+rand.workspace = true
 regex.workspace = true
 mermaid-rs-renderer.workspace = true
 serde.workspace = true
