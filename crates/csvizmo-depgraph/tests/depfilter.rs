@@ -730,3 +730,189 @@ fn cycles_self_loop_ignored() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout, "#\n");
 }
+
+// -- slice integration tests --
+
+#[cfg(feature = "dot")]
+#[test]
+fn slice_removes_cross_subgraph_edges() {
+    let dot_input = "\
+digraph {
+    subgraph cluster_0 {
+        a;
+    }
+    subgraph cluster_1 {
+        b;
+    }
+    a -> b;
+}
+";
+    let output = tool!("depfilter")
+        .args(["slice", "--input-format", "dot", "--output-format", "dot"])
+        .write_stdin(dot_input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_0 {
+        a;
+    }
+    subgraph cluster_1 {
+        b;
+    }
+}
+"
+    );
+}
+
+#[cfg(feature = "dot")]
+#[test]
+fn slice_preserves_root_nodes_by_default() {
+    let dot_input = "\
+digraph {
+    subgraph cluster_0 {
+        a;
+    }
+    orphan;
+    orphan -> a;
+}
+";
+    let output = tool!("depfilter")
+        .args(["slice", "--input-format", "dot", "--output-format", "dot"])
+        .write_stdin(dot_input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_0 {
+        a;
+    }
+    orphan;
+}
+"
+    );
+}
+
+#[cfg(feature = "dot")]
+#[test]
+fn slice_drop_orphans() {
+    let dot_input = "\
+digraph {
+    subgraph cluster_0 {
+        a;
+    }
+    orphan;
+    orphan -> a;
+}
+";
+    let output = tool!("depfilter")
+        .args([
+            "slice",
+            "--drop-orphans",
+            "--input-format",
+            "dot",
+            "--output-format",
+            "dot",
+        ])
+        .write_stdin(dot_input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_0 {
+        a;
+    }
+}
+"
+    );
+}
+
+#[test]
+fn slice_no_subgraphs() {
+    let graph = "a\nb\n#\na\tb\n";
+    let output = tool!("depfilter")
+        .args(["slice", "--input-format", "tgf", "--output-format", "tgf"])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "a\nb\n#\na\tb\n");
+}
+
+#[test]
+fn slice_no_subgraphs_drop_orphans() {
+    let graph = "a\nb\n#\na\tb\n";
+    let output = tool!("depfilter")
+        .args([
+            "slice",
+            "--drop-orphans",
+            "--input-format",
+            "tgf",
+            "--output-format",
+            "tgf",
+        ])
+        .write_stdin(graph)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "#\n");
+}
+
+#[cfg(feature = "dot")]
+#[test]
+fn slice_recursive() {
+    // Outer subgraph has node a and a nested inner subgraph with node b.
+    // Edge a -> b crosses the inner boundary; recursive mode should cut it.
+    let dot_input = "\
+digraph {
+    subgraph cluster_outer {
+        subgraph cluster_inner {
+            b;
+        }
+        a;
+        a -> b;
+    }
+}
+";
+    let output = tool!("depfilter")
+        .args([
+            "slice",
+            "--recursive",
+            "--input-format",
+            "dot",
+            "--output-format",
+            "dot",
+        ])
+        .write_stdin(dot_input)
+        .captured_output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout,
+        "\
+digraph {
+    subgraph cluster_outer {
+        subgraph cluster_inner {
+            b;
+        }
+        a;
+    }
+}
+"
+    );
+}

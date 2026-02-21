@@ -6,6 +6,7 @@ use csvizmo_depgraph::algorithm;
 use csvizmo_depgraph::algorithm::between::BetweenArgs;
 use csvizmo_depgraph::algorithm::cycles::CyclesArgs;
 use csvizmo_depgraph::algorithm::select::SelectArgs;
+use csvizmo_depgraph::algorithm::slice::SliceArgs;
 use csvizmo_depgraph::emit::OutputFormat;
 use csvizmo_depgraph::parse::InputFormat;
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
@@ -49,6 +50,8 @@ enum Command {
     Between(BetweenArgs),
     /// Detect cycles (strongly connected components) and output each as a subgraph
     Cycles(CyclesArgs),
+    /// Cut edges between subgraphs, isolating each subgraph
+    Slice(SliceArgs),
 }
 
 fn main() -> eyre::Result<()> {
@@ -98,6 +101,7 @@ fn main() -> eyre::Result<()> {
         Command::Select(select_args) => algorithm::select::select(&graph, select_args)?,
         Command::Between(between_args) => algorithm::between::between(&graph, between_args)?,
         Command::Cycles(cycles_args) => algorithm::cycles::cycles(&graph, cycles_args)?,
+        Command::Slice(slice_args) => algorithm::slice::slice(&graph, slice_args)?,
     };
 
     let mut output = get_output_writer(&output_path)?;
