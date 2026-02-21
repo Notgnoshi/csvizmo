@@ -1,20 +1,16 @@
 use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
-use csvizmo_depgraph::algorithm;
-use csvizmo_depgraph::algorithm::between::BetweenArgs;
-use csvizmo_depgraph::algorithm::cycles::CyclesArgs;
-use csvizmo_depgraph::algorithm::select::SelectArgs;
-use csvizmo_depgraph::algorithm::slice::SliceArgs;
+use clap::Parser;
+use csvizmo_depgraph::algorithm::cluster::{graphrs_bridge, lpa};
 use csvizmo_depgraph::emit::OutputFormat;
 use csvizmo_depgraph::parse::InputFormat;
 use csvizmo_utils::stdio::{get_input_reader, get_output_writer};
 
-/// Select or exclude nodes from dependency graphs.
+/// Cluster nodes in a dependency graph using community detection algorithms.
 ///
-/// Operations are performed via select, between, or cycles subcommands.
-/// Chain operations by piping: depfilter ... | depfilter ...
+/// Runs a community detection algorithm on the input graph and outputs the result
+/// with one subgraph per cluster. Cross-cluster edges appear at the top level.
 #[derive(Debug, Parser)]
 #[clap(version, verbatim_doc_comment)]
 struct Args {
@@ -23,35 +19,58 @@ struct Args {
     log_level: tracing::Level,
 
     /// Input file (stdin if '-' or omitted)
-    #[clap(short, long, global = true)]
+    #[clap(short, long)]
     input: Option<PathBuf>,
 
     /// Input format (auto-detected from extension/content if omitted)
-    #[clap(short = 'I', long, global = true)]
+    #[clap(short = 'I', long)]
     input_format: Option<InputFormat>,
 
     /// Output file (stdout if '-' or omitted)
-    #[clap(short, long, global = true)]
+    #[clap(short, long)]
     output: Option<PathBuf>,
 
     /// Output format (auto-detected from extension, defaults to DOT)
-    #[clap(short = 'O', long, global = true)]
+    #[clap(short = 'O', long)]
     output_format: Option<OutputFormat>,
 
-    #[clap(subcommand)]
-    command: Command,
+    /// Clustering algorithm
+    #[clap(short, long, default_value_t, value_enum)]
+    algorithm: Algorithm,
+
+    /// Use directed edges only (default: undirected/bidirectional)
+    #[clap(long)]
+    directed: bool,
+
+    /// Maximum iterations (LPA only)
+    #[clap(long, default_value_t = 100)]
+    max_iter: usize,
+
+    /// Random seed (LPA: shuffle order; Louvain: reproducibility)
+    #[clap(long)]
+    seed: Option<u64>,
+
+    /// Resolution parameter; higher = more clusters (Louvain/Leiden only)
+    #[clap(long, default_value_t = 1.0)]
+    resolution: f64,
 }
 
-#[derive(Debug, Subcommand)]
-enum Command {
-    /// Select nodes matching patterns and optionally their deps/rdeps
-    Select(SelectArgs),
-    /// Extract the subgraph of all directed paths between matched query nodes
-    Between(BetweenArgs),
-    /// Detect cycles (strongly connected components) and output each as a subgraph
-    Cycles(CyclesArgs),
-    /// Cut edges between subgraphs, isolating each subgraph
-    Slice(SliceArgs),
+#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
+enum Algorithm {
+    Lpa,
+    #[default]
+    Louvain,
+    Leiden,
+}
+
+impl std::fmt::Display for Algorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Algorithm::Lpa => write!(f, "lpa"),
+            Algorithm::Louvain => write!(f, "louvain"),
+            Algorithm::Leiden => write!(f, "leiden"),
+        }
+    }
 }
 
 fn main() -> eyre::Result<()> {
@@ -97,11 +116,14 @@ fn main() -> eyre::Result<()> {
         graph.subgraphs.len()
     );
 
-    let graph = match &args.command {
-        Command::Select(select_args) => algorithm::select::select(&graph, select_args)?,
-        Command::Between(between_args) => algorithm::between::between(&graph, between_args)?,
-        Command::Cycles(cycles_args) => algorithm::cycles::cycles(&graph, cycles_args)?,
-        Command::Slice(slice_args) => algorithm::slice::slice(&graph, slice_args)?,
+    let graph = match args.algorithm {
+        Algorithm::Lpa => lpa::lpa(&graph, args.directed, args.max_iter, args.seed),
+        Algorithm::Louvain => {
+            graphrs_bridge::louvain_clustering(&graph, args.directed, args.resolution, args.seed)?
+        }
+        Algorithm::Leiden => {
+            graphrs_bridge::leiden_clustering(&graph, args.directed, args.resolution)?
+        }
     };
 
     let mut output = get_output_writer(&output_path)?;

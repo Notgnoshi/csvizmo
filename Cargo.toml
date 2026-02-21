@@ -28,6 +28,7 @@ either = "1"
 eyre = "0.6.12"
 globset = "0.4.18"
 gnuplot = "0.0.46"
+graphrs = "0.11"
 hex = { version = "0.4.3", features = ["serde"] }
 indexmap = "2"
 itertools = "0.14.0"
@@ -35,7 +36,8 @@ mermaid-rs-renderer = { version = "0.1.2", default-features = false }
 itertools-num = "0.1.3"
 kernel-density-estimation = "0.2.0"
 ordered-float = "5.0.0"
-petgraph = "0.7"
+petgraph = "0.8"
+rand = "0.9"
 regex = "1"
 pathdiff = "0.2.3"
 serde = { version = "1.0.217", features = ["derive"] }
