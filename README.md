@@ -10,21 +10,21 @@ Gizmos for working with CSVs
 * [csvplot](#csvplot) -- line and scatter plots from CSV files
 * [csvstats](#csvstats) -- histograms and summary statistics for CSV files
 * [csvcat](#csvcat) -- concatenate CSV files
-* [can2k](#can2k) -- parse NMEA 2000 GPS data from CAN logs
-* [qgsdir](#qgsdir) -- generate QGIS projects from directories of CSV files
 * [csvdelta](#csvdelta) -- calculate inter-row deltas for CSV files
-* [minpath](#minpath) -- shorten file paths to minimal unique suffixes
-* [depconv](#depconv) -- convert dependency graphs between formats
-* [depfilter](#depfilter) -- filter or select subsets of dependency graphs
-* [deptransform](#deptransform) -- transform dependency graphs
+* [can2k](#can2k) -- parse NMEA 2000 GPS data from CAN logs
 * [can2csv](#can2csv) -- parse CAN logs into CSV files
 * [canspam](#canspam) -- generate random CAN traffic
 * [canstruct](#canstruct) -- reconstruct NMEA 2000 Fast Packet / ISO 11783-3 Transport Protocol
   sessions
+* [qgsdir](#qgsdir) -- generate QGIS projects from directories of CSV files
+* [depconv](#depconv) -- convert dependency graphs between formats
+* [depfilter](#depfilter) -- filter or select subsets of dependency graphs
+* [deptransform](#deptransform) -- transform dependency graphs
 * [depquery](#depquery) -- query properties of dependency graphs
 * [depcluster](#depcluster) -- cluster dependency graphs using community detection
 * [graphdiff](#graphdiff) -- compare two dependency graphs
 * [bbclasses](#bbclasses) -- generate BitBake recipe inheritance diagrams
+* [minpath](#minpath) -- shorten file paths to minimal unique suffixes
 
 # Philosophy
 
@@ -125,37 +125,6 @@ foo,bar,baz
 7,8,9
 ```
 
-## can2k
-
-Parse NMEA 2000 GPS data out of a candump into a CSV file that QGIS can load with minimal effort.
-
-```sh
-$ can2k ./data/n2k-sample.log
-src,seq_id,longitude_deg,latitude_deg,altitude_m,sog_mps,cog_deg_cwfn,cog_ref,method,msg_timestamp,gps_timestamp,gps_age,msg
-28,82,-139.6000461230086,-8.799010622654123,0.0,4.5,356.769359872061,0,4,1739920494.579828,,0.0,GNSS Position Data
-28,82,-139.60004635356415,-8.799006583765234,0.0,4.5,356.769359872061,0,4,1739920494.675967,,0.0,Position Delta
-28,82,-139.60004658411972,-8.799002542098567,0.0,4.5,356.769359872061,0,4,1739920494.775932,,0.0,Position Delta
-...
-```
-
-> [!IMPORTANT]
->
-> If you want to use `can2k` together with `qgsdir`, you need to use `can2k --wkt`.
-
-## qgsdir
-
-Generate a QGIS project from a directory of CSV layer files. Each CSV file is assumed to have a
-column of WKT geometries named `geometry` (QGIS's geometry heuristics don't appear to be exposed via
-their Python API).
-
-```sh
-$ can2k --wkt ./data/n2k-sample.log ./data/n2k.csv
-$ qgsdir --open ./data/n2k.csv
-```
-
-You may pass directories or files. If you pass a directory, the script is able to group layers by
-subdirectory, leading to an easier-to-use layer tree.
-
 ## csvdelta
 
 Calculate the inter-row deltas for a CSV column. Useful for understanding the time between events.
@@ -177,24 +146,82 @@ foo,bar,foo-deltas
 5,d,2
 ```
 
-## minpath
+## can2k
 
-Shorten file paths to the minimal unique suffix. Useful for displaying lists of files in a compact
-way while keeping them distinguishable.
+Parse NMEA 2000 GPS data out of a candump into a CSV file that QGIS can load with minimal effort.
 
 ```sh
-$ minpath <<EOF
-/home/user/project/src/main.rs
-/home/user/project/src/lib.rs
-/home/user/project/tests/main.rs
-EOF
-
-src/main.rs
-lib.rs
-tests/main.rs
+$ can2k ./data/n2k-sample.log
+src,seq_id,longitude_deg,latitude_deg,altitude_m,sog_mps,cog_deg_cwfn,cog_ref,method,msg_timestamp,gps_timestamp,gps_age,msg
+28,82,-139.6000461230086,-8.799010622654123,0.0,4.5,356.769359872061,0,4,1739920494.579828,,0.0,GNSS Position Data
+28,82,-139.60004635356415,-8.799006583765234,0.0,4.5,356.769359872061,0,4,1739920494.675967,,0.0,Position Delta
+28,82,-139.60004658411972,-8.799002542098567,0.0,4.5,356.769359872061,0,4,1739920494.775932,,0.0,Position Delta
+...
 ```
 
-Multiple options are available to customize and tune the output. See `minpath --help` for details.
+> [!IMPORTANT]
+>
+> If you want to use `can2k` together with `qgsdir`, you need to use `can2k --wkt`.
+
+## can2csv
+
+Parse basic data from a CAN frame into a CSV record. Faster than `sed`, and also parses the canid.
+Useful in conjunction with `csvdelta` to understand message timing.
+
+`can2csv` is not a real CAN parser, and does not understand any of the data transmitted via CAN.
+
+```sh
+$ head -n 3 data/candump-random-data.log | can2csv
+timestamp,interface,canid,dlc,priority,src,dst,pgn,data
+1739229594.465994,can0,0xE9790B5,8,3,0xB5,0x90,0x29700,CA3F871A5A6EE75F
+1739229594.467052,can0,0xD15F192,8,3,0x92,0xF1,0x11500,500B3766CB2DED7C
+```
+
+If you pass `--reconstruct`, then `can2csv` will reconstruct any transport layer sessions it can
+understand. Right now that's just NMEA 2000 Fast Packet, but ISO-11783 Transport Protocol is
+planned.
+
+## canspam
+
+The [canspam](./scripts/canspam) script can generate random CAN traffic on a Linux CAN device. It's
+useful for inflating busload, or for generating random traffic to test `can2csv` against ;)
+
+## canstruct
+
+The `canstruct` tool is a NMEA 2000 Fast Packet / ISO 11783-3 Transport Protocol transport session
+reconstruction tool. That is, you give it the individual 8-byte frames, and it gives you the
+reconstructed messages.
+
+```sh
+$ cat data/abort-then-full.log
+(1750963033.251412) can0 18EC2A1C#101600040400EF00      // TP.CM_RTS
+(1750963033.270725) can0 18EC1C2A#FF01FFFFFF00EF00      // TP.Conn_Abort
+(1750963079.757877) can0 18EC2A1C#101600040400EF00      // TP.CM_RTS
+(1750963079.775206) can0 18EC1C2A#110401FFFF00EF00      // TP.CM_CTS
+(1750963079.778342) can0 14EB2A1C#0111111111111111      // TP.DT
+(1750963079.779468) can0 14EB2A1C#0222222222222222      // TP.DT
+(1750963079.780613) can0 14EB2A1C#0333333333333333      // TP.DT
+(1750963079.781778) can0 14EB2A1C#0444FFFFFFFFFFFF      // TP.DT
+(1750963079.795905) can0 18EC1C2A#13160004FF00EF00      // TP.CM_EndofMsgACK
+
+$ canstruct data/abort-then-full.log
+2025-06-28T15:36:19.051620Z  WARN csvizmo::can::tp: TP.CM_ABRT 0x1C <- 0x2A reason ExistingTransportSession pgn 0xEF00
+(1750963079.795905) can0 18EF2A1C#11111111111111222222222222223333333333333344
+```
+
+## qgsdir
+
+Generate a QGIS project from a directory of CSV layer files. Each CSV file is assumed to have a
+column of WKT geometries named `geometry` (QGIS's geometry heuristics don't appear to be exposed via
+their Python API).
+
+```sh
+$ can2k --wkt ./data/n2k-sample.log ./data/n2k.csv
+$ qgsdir --open ./data/n2k.csv
+```
+
+You may pass directories or files. If you pass a directory, the script is able to group layers by
+subdirectory, leading to an easier-to-use layer tree.
 
 ## depconv
 
@@ -387,52 +414,6 @@ flowchart LR
     a --> b
 ```
 
-## can2csv
-
-Parse basic data from a CAN frame into a CSV record. Faster than `sed`, and also parses the canid.
-Useful in conjunction with `csvdelta` to understand message timing.
-
-`can2csv` is not a real CAN parser, and does not understand any of the data transmitted via CAN.
-
-```sh
-$ head -n 3 data/candump-random-data.log | can2csv
-timestamp,interface,canid,dlc,priority,src,dst,pgn,data
-1739229594.465994,can0,0xE9790B5,8,3,0xB5,0x90,0x29700,CA3F871A5A6EE75F
-1739229594.467052,can0,0xD15F192,8,3,0x92,0xF1,0x11500,500B3766CB2DED7C
-```
-
-If you pass `--reconstruct`, then `can2csv` will reconstruct any transport layer sessions it can
-understand. Right now that's just NMEA 2000 Fast Packet, but ISO-11783 Transport Protocol is
-planned.
-
-## canspam
-
-The [canspam](./scripts/canspam) script can generate random CAN traffic on a Linux CAN device. It's
-useful for inflating busload, or for generating random traffic to test `can2csv` against ;)
-
-## canstruct
-
-The `canstruct` tool is a NMEA 2000 Fast Packet / ISO 11783-3 Transport Protocol transport session
-reconstruction tool. That is, you give it the individual 8-byte frames, and it gives you the
-reconstructed messages.
-
-```sh
-$ cat data/abort-then-full.log
-(1750963033.251412) can0 18EC2A1C#101600040400EF00      // TP.CM_RTS
-(1750963033.270725) can0 18EC1C2A#FF01FFFFFF00EF00      // TP.Conn_Abort
-(1750963079.757877) can0 18EC2A1C#101600040400EF00      // TP.CM_RTS
-(1750963079.775206) can0 18EC1C2A#110401FFFF00EF00      // TP.CM_CTS
-(1750963079.778342) can0 14EB2A1C#0111111111111111      // TP.DT
-(1750963079.779468) can0 14EB2A1C#0222222222222222      // TP.DT
-(1750963079.780613) can0 14EB2A1C#0333333333333333      // TP.DT
-(1750963079.781778) can0 14EB2A1C#0444FFFFFFFFFFFF      // TP.DT
-(1750963079.795905) can0 18EC1C2A#13160004FF00EF00      // TP.CM_EndofMsgACK
-
-$ canstruct data/abort-then-full.log
-2025-06-28T15:36:19.051620Z  WARN csvizmo::can::tp: TP.CM_ABRT 0x1C <- 0x2A reason ExistingTransportSession pgn 0xEF00
-(1750963079.795905) can0 18EF2A1C#11111111111111222222222222223333333333333344
-```
-
 ## bbclasses
 
 The [bbclasses](./scripts/bbclasses) script can parse BitBake recipes to generate an inheritance
@@ -502,3 +483,22 @@ flowchart LR
     poky/meta/conf/distro/include/ptest-packagelists.inc -->|"require"| poky/meta/classes-recipe/ptest.bbclass
     poky/meta/recipes-support/curl/curl_8.7.1.bb -->|"appends"| meta-work/recipes-support/curl/curl__.bbappend
 ```
+
+## minpath
+
+Shorten file paths to the minimal unique suffix. Useful for displaying lists of files in a compact
+way while keeping them distinguishable.
+
+```sh
+$ minpath <<EOF
+/home/user/project/src/main.rs
+/home/user/project/src/lib.rs
+/home/user/project/tests/main.rs
+EOF
+
+src/main.rs
+lib.rs
+tests/main.rs
+```
+
+Multiple options are available to customize and tune the output. See `minpath --help` for details.
