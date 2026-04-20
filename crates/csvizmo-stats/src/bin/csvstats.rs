@@ -144,6 +144,15 @@ fn main() -> eyre::Result<()> {
     }
 
     for (colname, col_data, stats) in itertools::izip!(args.column.iter(), data, all_stats) {
+        // Stats already excludes out-of-range values via OnlineStats::from_unsorted_iter, but
+        // col_data is untouched. The plotter's bin-index math assumes values lie in [min, max],
+        // so filter here to keep the plot consistent with the stats.
+        let col_data: Vec<f64> = col_data
+            .into_iter()
+            .filter(|v| args.min.is_none_or(|m| *v >= m))
+            .filter(|v| args.max.is_none_or(|m| *v <= m))
+            .collect();
+
         let mut fig = gnuplot::Figure::new();
         let axes = fig.axes2d();
 
