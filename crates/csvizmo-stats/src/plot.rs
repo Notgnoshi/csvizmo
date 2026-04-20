@@ -95,6 +95,8 @@ impl Axes2DExt for Axes2D {
         let min = if let Some(m) = min { m } else { stats.min };
         let max = if let Some(m) = max { m } else { stats.max };
 
+        let x: Vec<f64> = x.into_iter().filter(|v| !v.is_nan()).collect();
+
         // If number of bins is given, then linspace the range [min..max]. Otherwise use the
         // Freedman-Diaconis rule to calculate the binwidth.
         let (bin_width, num_bins) = if let Some(num_bins) = num_bins {
@@ -146,7 +148,6 @@ impl Axes2DExt for Axes2D {
         }
         let max_count = max_count as f64;
 
-        let x: Vec<_> = x.into_iter().filter(|x| !x.is_nan()).collect();
         let kde = KernelDensityEstimator::new(x, Silverman, Normal);
         let median_pdf = kde.pdf(&[stats.median.unwrap_or(stats.mean)])[0];
         let sample_points: Vec<_> = itertools_num::linspace(min, max, num_bins * 2).collect();
