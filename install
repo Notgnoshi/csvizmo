@@ -85,6 +85,14 @@ package_binaries() {
         grep -v '^template$'
 }
 
+csvizmo_bin_packages() {
+    # Returns package names for packages that have binary targets, which is what 'cargo uninstall'
+    # expects (bin names are not package specs)
+    cargo metadata --no-deps --format-version 1 |
+        jq -r '.packages[] | select(.targets[] | .kind[] == "bin") | .name' |
+        sort -u
+}
+
 csvizmo_scripts() {
     for script in "$CSVIZMO_REPO_ROOT/scripts"/*; do
         echo "$script"
@@ -142,12 +150,12 @@ uninstall_csvizmo() {
     local -r prefix="$2"
 
     info "Uninstalling csvizmo binaries ..."
-    for bin in $(csvizmo_binaries); do
+    for pkg in $(csvizmo_bin_packages); do
         if [[ "$dry_run" = "false" ]]; then
-            info "Uninstalling $bin ..."
-            cargo uninstall "$bin" || true
+            info "Uninstalling $pkg ..."
+            cargo uninstall --root "$prefix" "$pkg" || true
         else
-            echo "Dry run. Would have run: 'cargo uninstall $bin'"
+            echo "Dry run. Would have run: 'cargo uninstall --root $prefix $pkg'"
         fi
     done
     info "Uninstalling project scripts from $prefix ..."
