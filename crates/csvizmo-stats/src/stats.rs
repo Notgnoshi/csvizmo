@@ -166,7 +166,7 @@ impl OnlineStats {
         self.num += 1;
         let delta = sample - self.mean;
         self.mean += delta / self.num as f64;
-        self.m2 += delta * delta;
+        self.m2 += delta * (sample - self.mean);
     }
 
     #[inline]
@@ -294,5 +294,20 @@ mod tests {
         let data = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let qs = quartiles(&data).unwrap();
         assert_eq!(qs, (1.0, 3.0, 5.0));
+    }
+
+    #[test]
+    fn test_constant_variance_is_zero() {
+        let data = [8.0; 10];
+        let stats = OnlineStats::from_sorted("", "", &data, None, None);
+        assert_eq!(stats.variance(), 0.0);
+    }
+
+    #[test]
+    fn test_sample_variance() {
+        let data = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let stats = OnlineStats::from_sorted("", "", &data, None, None);
+        assert_eq!(stats.mean, 3.0);
+        assert_eq!(stats.variance(), 2.5);
     }
 }

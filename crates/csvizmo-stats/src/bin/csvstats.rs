@@ -62,7 +62,7 @@ struct Args {
 
     /// Use the given number of histogram bins
     ///
-    /// If not given, use the Freedman-Diaconis rule to determine the bin-width and number of bins.
+    /// If not given, estimate the bin width from the data using a modified Freedman-Diaconis rule
     #[clap(short, long)]
     bins: Option<usize>,
 }
