@@ -37,6 +37,9 @@ impl Axes2DExt for Axes2D {
         let min = if let Some(m) = min { m } else { stats.min };
         let max = if let Some(m) = max { m } else { stats.max };
 
+        let x: Vec<f64> = x.into_iter().filter(|v| !v.is_nan()).collect();
+        let kde = KernelDensityEstimator::new(x.as_slice(), Silverman, Normal);
+
         let x = unsafe { std::mem::transmute::<Vec<f64>, Vec<OrderedFloat<f64>>>(x) };
         let counter = Counter::new(x);
 
@@ -49,13 +52,12 @@ impl Axes2DExt for Axes2D {
             0.0
         };
 
-        let mut items: Vec<_> = counter.into_iter().filter(|(x, _)| !x.is_nan()).collect();
+        let mut items: Vec<_> = counter.into_iter().collect();
         items.sort_unstable_by_key(|(x, _count)| *x);
         let (x, counts): (Vec<_>, Vec<_>) = items.into_iter().unzip();
         let x = unsafe { std::mem::transmute::<Vec<OrderedFloat<f64>>, Vec<f64>>(x) };
         let widths = std::iter::repeat_n(bin_width, x.len()).collect();
 
-        let kde = KernelDensityEstimator::new(x.as_slice(), Silverman, Normal);
         // TODO: This scaling needs tuning I think. It makes the assumption that the median is
         // close to the most common value, which is not the case. it would maybe be better if it
         // were scaled up to the count at the median, but the median isn't guaranteed to be a key
