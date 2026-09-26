@@ -38,6 +38,7 @@ impl Axes2DExt for Axes2D {
         let max = if let Some(m) = max { m } else { stats.max };
 
         let x: Vec<f64> = x.into_iter().filter(|v| !v.is_nan()).collect();
+        let num_samples = x.len() as f64;
         let kde = KernelDensityEstimator::new(x.as_slice(), Silverman, Normal);
 
         let x = unsafe { std::mem::transmute::<Vec<f64>, Vec<OrderedFloat<f64>>>(x) };
@@ -58,16 +59,18 @@ impl Axes2DExt for Axes2D {
         let x = unsafe { std::mem::transmute::<Vec<OrderedFloat<f64>>, Vec<f64>>(x) };
         let widths = std::iter::repeat_n(bin_width, x.len()).collect();
 
-        // TODO: This scaling needs tuning I think. It makes the assumption that the median is
-        // close to the most common value, which is not the case. it would maybe be better if it
-        // were scaled up to the count at the median, but the median isn't guaranteed to be a key
-        // in the Counter.
-        let median_pdf = kde.pdf(&[stats.median.unwrap_or(stats.mean)])[0];
+        // Scale the density to counts using the spacing between adjacent values rather than the
+        // drawn box width, since the boxes are sized to fill [min, max] and not to the data's grid.
+        let spacing = x
+            .windows(2)
+            .map(|w| w[1] - w[0])
+            .reduce(f64::min)
+            .unwrap_or(bin_width);
         let sample_points: Vec<_> = itertools_num::linspace(min, max, num_bins * 2).collect();
         let pdf_samples = kde
             .pdf(&sample_points)
             .into_iter()
-            .map(|s| s * 0.7 * max_count / median_pdf);
+            .map(|s| s * num_samples * spacing);
 
         self.set_y_range(AutoOption::Fix(0.0), AutoOption::Fix(max_count + 0.4));
         self.set_x_range(
@@ -149,13 +152,13 @@ impl Axes2DExt for Axes2D {
         }
         let max_count = max_count as f64;
 
+        let num_samples = x.len() as f64;
         let kde = KernelDensityEstimator::new(x, Silverman, Normal);
-        let median_pdf = kde.pdf(&[stats.median.unwrap_or(stats.mean)])[0];
         let sample_points: Vec<_> = itertools_num::linspace(min, max, num_bins * 2).collect();
         let pdf_samples = kde
             .pdf(&sample_points)
             .into_iter()
-            .map(|s| s * 0.7 * max_count / median_pdf);
+            .map(|s| s * num_samples * bin_width);
 
         let widths = std::iter::repeat_n(bin_width, bin_centers.len()).collect();
 
