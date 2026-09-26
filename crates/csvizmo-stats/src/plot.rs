@@ -97,15 +97,14 @@ impl Axes2DExt for Axes2D {
 
         let x: Vec<f64> = x.into_iter().filter(|v| !v.is_nan()).collect();
 
-        // If number of bins is given, then linspace the range [min..max]. Otherwise use the
-        // Freedman-Diaconis rule to calculate the binwidth.
+        // If number of bins is given, then linspace the range [min..max]. Otherwise estimate the
+        // bin width from the data.
         let (bin_width, num_bins) = if let Some(num_bins) = num_bins {
             let bin_width = (max - min) / (num_bins as f64);
             (bin_width, num_bins)
         } else {
-            // https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
             let iqr = stats.q3.unwrap() - stats.q1.unwrap();
-            let bin_width = 2.0 * iqr / (stats.num as f64).cbrt();
+            let bin_width = auto_bin_width(max - min, iqr, stats.num);
 
             let num_bins = (max - min) / bin_width;
             let num_bins = num_bins.ceil() as usize;
@@ -119,7 +118,7 @@ impl Axes2DExt for Axes2D {
                 (bin_width, num_bins)
             }
         };
-        tracing::info!("Using {num_bins} bins with width {bin_width:.4}");
+        tracing::info!("Using {num_bins} bins with width {bin_width:e}");
 
         let mut counts = vec![0; num_bins];
 
@@ -174,4 +173,16 @@ impl Axes2DExt for Axes2D {
         )
         .lines(sample_points, pdf_samples, &[PlotOption::LineWidth(2.0)])
     }
+}
+
+/// Automatic histogram bin width, following numpy's "auto" estimator
+///
+/// Start with Freedman-Diaconis, floored at half the sqrt-rule width, and then capped at the
+/// Sturges width.
+fn auto_bin_width(range: f64, iqr: f64, n: usize) -> f64 {
+    let n = n as f64;
+    let fd = 2.0 * iqr / n.cbrt();
+    let sqrt = range / n.sqrt();
+    let sturges = range / (n.log2() + 1.0);
+    fd.max(sqrt / 2.0).min(sturges)
 }
